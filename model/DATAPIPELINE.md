@@ -12,11 +12,10 @@ graph LR
 ```mermaid
 graph TD
     A[Raw Data] --> B[Preprocessing.py]
-    B --> |데이터 통합| C[데이터 병합]
-    C --> |날짜 형식 변환| D[날짜/시간 정규화]
-    D --> |예매율 계산| E[예매율 추가]
-    E --> |결측치 처리| F[정제된 데이터]
-    F --> G[Combined_Musical_Data.csv]
+    B --> |process_musical_data()| C[데이터 병합]
+    C --> |날짜와 요일 분리, 출연진 문자열 생성| D[정규화]
+    D --> |calculate_daily_booking_rate()| E[일별 예매율 추가]
+    E --> |DataFrame 반환 및 CSV 저장| F[Combined_Musical_Data.csv]
 ```
 
 ## 3. 데이터 스키마 통합
@@ -73,7 +72,7 @@ graph TD
     C --> D[Save Model to S3]
     D --> E[Deploy to SageMaker Endpoint]
     E --> F[API Gateway]
-    F --> G[Lambda Function]
+    F --> G[Batch Function]
 ```
 
 ## 6. 전체 데이터 파이프라인 흐름도
