@@ -31,3 +31,20 @@ git push origin 브랜치명 # origin 하면 자동으로 원격저장소에 같
 - [모델 설명서](model/README.md)
 - [데이터 명세서](model/READMEDATA.md)
 - [데이터 파이프라인](model/DATAPIPELINE.md)
+
+## 구현
+### 추천 시스템 구현 화면
+<p align="center">
+  <img src="./READMEImages/추천_구현_화면_1.png" width="90%" />
+  <img src="./READMEImages/추천_구현_화면_2.png" width="45%" height="300px" style="object-fit: contain; margin-bottom: 10px; margin-top: -10%;" />
+  <img src="./READMEImages/추천_구현_화면_3.png" width="45%" height="300px" style="object-fit: contain; margin-bottom: 10px; margin-top: -10%;" />
+</p>
+
+### 추천 모델 성능 평가
+<p align="center">
+  <img src="./READMEImages/추천_모델_성능_평가.png" width="70%" />
+</p>
+<p align="center">
+  <img src="./READMEImages/추천_모델_성능_평가_2.png" width="70%" />
+</p>
+
