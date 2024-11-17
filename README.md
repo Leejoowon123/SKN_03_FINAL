@@ -23,14 +23,40 @@ git checkout -b 브랜치명
 
 # 변경사항 추가 및 커밋
 git add .
+pip freeze > requirements.txt # 추가 설치 모듈/라이브러리 존재할 경우
 git commit # i 클릭 후 커밋 메시지 작성 → 다 작성 후 esc 클릭 후 :wq 입력 후 엔터
 git push origin 브랜치명 # origin 하면 자동으로 원격저장소에 같은 이름으로 push
 ```
+
+# 프로젝트 사용법
+- 가상환경 설치
+```bash
+py -3.12 -m venv .venv
+```
+- 가상환경 실행
+```bash
+.venv\Scripts\activate
+```
+- 필요 모듈 설치
+```bash
+pip install -r requirements.txt
+```
+- streamlit 실행
+```bash
+streamlit run main.py
+```
+- 터미널로 실행
+```bash
+py -m model.recommend_musical
+```
+  - 배우 입력(Actor A ~ Actor Z) & 장르 입력(1 ~ 5)
+  - 반복(y | n)
 
 ## 문서 목록
 - [모델 설명서](model/README.md)
 - [데이터 명세서](model/READMEDATA.md)
 - [데이터 파이프라인](model/DATAPIPELINE.md)
+
 
 ## 구현
 ### 추천 시스템 구현 화면
