@@ -4,7 +4,7 @@
 ```mermaid
 graph LR
     A[공연예술통합전산망 OpenAPI] --> B[Musical_Data.csv]
-    C[인터파크 크롤링] --> D[Musical_{N}_Casting_Board.csv]
+    C[인터파크 크롤링] --> D[Musical_N_Casting_Board.csv]
     E[RAG System] --> F[Story Data]
 ```
 
@@ -12,10 +12,10 @@ graph LR
 ```mermaid
 graph TD
     A[Raw Data] --> B[Preprocessing.py]
-    B --> |1. 데이터 통합| C[데이터 병합]
-    C --> |2. 날짜 형식 변환| D[날짜/시간 정규화]
-    D --> |3. 예매율 계산| E[예매율 추가]
-    E --> |4. 결측치 처리| F[정제된 데이터]
+    B --> |데이터 통합| C[데이터 병합]
+    C --> |날짜 형식 변환| D[날짜/시간 정규화]
+    D --> |예매율 계산| E[예매율 추가]
+    E --> |결측치 처리| F[정제된 데이터]
     F --> G[Combined_Musical_Data.csv]
 ```
 
