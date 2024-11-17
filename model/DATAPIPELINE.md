@@ -12,10 +12,10 @@ graph LR
 ```mermaid
 graph TD
     A[Raw Data] --> B[Preprocessing.py]
-    B --> |process_musical_data()| C[데이터 병합]
-    C --> |날짜와 요일 분리, 출연진 문자열 생성| D[정규화]
-    D --> |calculate_daily_booking_rate()| E[일별 예매율 추가]
-    E --> |DataFrame 반환 및 CSV 저장| F[Combined_Musical_Data.csv]
+    B --> |process_musical_data| C[데이터 병합]
+    C --> |전처리 과정| D[정규화]
+    D --> |calculate_daily_booking_rate| E[일별 예매율 추가]
+    E --> |저장| F[Combined_Musical_Data.csv]
 ```
 
 ## 3. 데이터 스키마 통합
