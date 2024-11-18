@@ -48,8 +48,20 @@ def get_musical_recommendations():
         print("\n=== 모델 성능 평가 ===")
         metrics = recommender.evaluate_model()
         print(f"Loss: {metrics['Loss']:.4f}")
-        print(f"MAE: {metrics['MAE(%)']:.2f}%")
-        print(f"RMSE: {metrics['RMSE(%)']:.2f}%")
+        print(f"MAE: {metrics['MAE']:.2f}%")
+        print(f"RMSE: {metrics['RMSE']:.2f}%")
+        print(f"R2 Score: {metrics['R2 Score']:.4f}")
+        
+        print("\n=== 피처 중요도 ===")
+        for feature, importance in metrics['Feature Importance'].items():
+            print(f"{feature}: {importance:.2f}%")
+        
+        print("\n=== 예측값 통계 ===")
+        pred_stats = metrics['Prediction Stats']
+        print(f"평균: {pred_stats['Mean']:.2f}%")
+        print(f"표준편차: {pred_stats['Std']:.2f}%")
+        print(f"최소값: {pred_stats['Min']:.2f}%")
+        print(f"최대값: {pred_stats['Max']:.2f}%")
         
         # 장르 매핑 정의
         genre_mapping = {
