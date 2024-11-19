@@ -73,6 +73,26 @@ def load_recommender():
     recommender.load_and_preprocess_data()
     recommender.create_deepfm_model()
     recommender.train_model()
+    
+    # 모델 성능 평가
+    metrics = recommender.evaluate_model()
+    st.markdown("\n=== 모델 성능 평가 ===")
+    st.text(f"Loss: {metrics['Loss']:.4f}")
+    st.text(f"MAE: {metrics['MAE']:.2f}%")
+    st.text(f"RMSE: {metrics['RMSE']:.2f}%")
+    st.text(f"R2 Score: {metrics['R2 Score']:.4f}")
+    
+    st.markdown("\n=== 피처 중요도 ===")
+    for feature, importance in metrics['Feature Importance'].items():
+        st.text(f"{feature}: {importance:.2f}%")
+    
+    st.markdown("\n=== 예측값 통계 ===")
+    pred_stats = metrics['Prediction Stats']
+    st.text(f"평균: {pred_stats['Mean']:.2f}%")
+    st.text(f"표준편차: {pred_stats['Std']:.2f}%")
+    st.text(f"최소값: {pred_stats['Min']:.2f}%")
+    st.text(f"최대값: {pred_stats['Max']:.2f}%")
+    
     return recommender
 
 # 모델 로드
@@ -110,25 +130,36 @@ if submit:
         st.error("배우 이름을 입력해주세요.")
     else:
         try:
-            # 장르 매핑 적용
             favorite_genre = genre_mapping[genre_choice]
             
-            # 추천 받기
+            st.text("\n추천 뮤지컬을 찾는 중...")
             with st.spinner('추천 뮤지컬을 찾는 중...'):
                 recommendations = recommender.recommend_musicals(favorite_actor, favorite_genre)
             
-            # 추천 결과 출력
-            st.markdown("### 챗봇 왈 : 당신에게 추천드리는 뮤지컬입니다.")
-            
-            for i, rec in enumerate(recommendations, 1):
-                if i == 1:
-                    # 첫 번째 추천작은 더 크게 표시
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        st.image("static/images/display_image_1.jpg", width=400)
-                    with col2:
+            if recommendations:
+                st.markdown("### 챗봇 왈 : 당신에게 추천드리는 뮤지컬입니다.")
+                # 추천 결과 출력
+                for i, rec in enumerate(recommendations, 1):
+                    if i == 1:
+                        # 첫 번째 추천작은 더 크게 표시
+                        col1, col2 = st.columns([2, 1])
+                        with col1:
+                            st.image("static/images/display_image_1.jpg", width=400)
+                        with col2:
+                            st.markdown(f"""
+                            ### {rec['뮤지컬 제목']}
+                            - 예측 예매율: {rec['예측 예매율']:.2f}%
+                            - 공연일: {rec['관람일']} ({rec['관람요일']})
+                            - 장르: {rec['공연 장르']}
+                            - 공연장: {rec['공연 시설명']}
+                            - 티켓 가격: {rec['티켓 가격']:,}원
+                            - 출연진: {rec['출연진']}
+                            """)
+                    else:
+                        # 나머지 추천작
                         st.markdown(f"""
-                        ### {rec['뮤지컬 제목']}
+                        #### {i}번째 추천 뮤지컬
+                        - 제목: {rec['뮤지컬 제목']}
                         - 예측 예매율: {rec['예측 예매율']:.2f}%
                         - 공연일: {rec['관람일']} ({rec['관람요일']})
                         - 장르: {rec['공연 장르']}
@@ -136,18 +167,8 @@ if submit:
                         - 티켓 가격: {rec['티켓 가격']:,}원
                         - 출연진: {rec['출연진']}
                         """)
-                else:
-                    # 나머지 추천작
-                    st.markdown(f"""
-                    #### {i}번째 추천 뮤지컬
-                    - 제목: {rec['뮤지컬 제목']}
-                    - 예측 예매율: {rec['예측 예매율']:.2f}%
-                    - 공연일: {rec['관람일']} ({rec['관람요일']})
-                    - 장르: {rec['공연 장르']}
-                    - 공연장: {rec['공연 시설명']}
-                    - 티켓 가격: {rec['티켓 가격']:,}원
-                    - 출연진: {rec['출연진']}
-                    """)
-                    
+            else:
+                st.warning(f"\n{favorite_actor}와(과) {favorite_genre} 장르의 공연을 찾을 수 없습니다.")
+                
         except Exception as e:
             st.error(f"추천 과정에서 오류가 발생했습니다: {str(e)}")

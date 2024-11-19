@@ -397,8 +397,16 @@ class MusicalRecommender:
             
             # 정규화된 최종 점수 계산
             final_score = (base_score * weights_sum) * 100
-            final_score = min(max(final_score, 0), 100)  # 0~100 범위로 제한
-            
+            # final_score = min(max(final_score, 0), 100)  # 0~100 범위로 제한
+            # 현재 모델의 예측 통계를 사용하여 범위 제한
+            if self.prediction_stats:
+                mean_score = self.prediction_stats['mean']
+                std_score = self.prediction_stats['std']
+                max_allowed = mean_score + 2 * std_score  # 평균 + 2표준편차
+                min_allowed = max(self.prediction_stats['min'], mean_score - 2 * std_score)
+                final_score = min(max(final_score, min_allowed), max_allowed)
+
+
             # 선호도 점수 계산
             preference_score = 0
             if has_favorite_actor:
@@ -455,6 +463,14 @@ class MusicalRecommender:
         pred_std = np.std(y_pred) * 100
         pred_min = np.min(y_pred) * 100
         pred_max = np.max(y_pred) * 100
+
+        # 예측값 통계 저장
+        self.prediction_stats = {
+            'mean': pred_mean,
+            'std': pred_std,
+            'min': pred_min,
+            'max': pred_max
+        }
         
         return {
             'Loss': loss,
