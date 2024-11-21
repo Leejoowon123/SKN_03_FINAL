@@ -12,7 +12,7 @@ SKN03-FINAL-2Team
 
 - **장르 특성 벡터**: $\mathbf{x}_i^{\text{genre}}$
 - **배우 특성 벡터**: $\mathbf{x}_i^{\text{actor}}$
-- **감독 특성 벡터**: $\mathbf{x}_i^{\text{director}}$
+- **뮤지컬id 특성 벡터**: $\mathbf{x}_i^{\text{musical_id}}$
 
 
 각 특성에 대해 하나의 벡터가 주어지며, 이 벡터들을 결합하여 아이템 \( i \)의 최종 특성 벡터를 얻을 수 있습니다.
