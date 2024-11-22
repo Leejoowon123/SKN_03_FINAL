@@ -4,8 +4,8 @@ SKN03-FINAL-2Team
 
 # DeepFM 모델을 이용한 아이템-아이템 추천 시스템
 
-이 프로젝트는 user data없이 
-**DeepFM** 모델을 사용하여 아이템 - 아이템 특성 간의 시스템을 구축하는 방법을 설명합니다. 
+이 프로젝트는 user data의 사용 없이 
+**DeepFM** 모델을 사용하여 아이템 특성(배우) - 아이템 특성 (장르) 간의 시스템을 구축하는 방법을 설명합니다. 
 user의 data가 아닌 item특성을 열로 지정하여 ITEM과 행렬화 하였습니다. 
 주로 **아이템 특성** 간의 상호작용을 모델링하고, **Deep Neural Networks (DNN)**와 **Factorization Machines (FM)**을 결합하여 추천 결과를 도출합니다.
 
