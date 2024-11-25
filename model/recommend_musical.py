@@ -1,6 +1,6 @@
 import os
 import subprocess
-from model.RecommendationModel import MusicalRecommender
+from SKN_03_FINAL.model.RecommendationModel import MusicalRecommender
 
 """ 파일 존재 여부 확인 → 없으면 Preprocessing.py를 실행하는 함수"""
 def check_and_run_preprocessing():

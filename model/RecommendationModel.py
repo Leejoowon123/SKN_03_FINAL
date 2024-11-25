@@ -9,6 +9,9 @@ from tensorflow.keras.optimizers import AdamW
 from tensorflow.keras import backend as K
 from sklearn.model_selection import train_test_split
 from itertools import product
+from sklearn.inspection import permutation_importance
+
+#부정샘플링한 파일 넣어서 데이터프레임으로 만들기
 
 class MusicalRecommender:
     def __init__(self):
@@ -17,47 +20,15 @@ class MusicalRecommender:
         self.model = None
         self.label_encoders = {}
         self.vocab_sizes = {}
-        
-        # 한글 컬럼명과 영문 매핑 딕셔너리
-        self.column_mapping = {
-            '뮤지컬 제목': 'musical_title',
-            '관람일': 'viewing_date',
-            '관람요일': 'viewing_day',
-            '관람 시간': 'viewing_time',
-            '티켓 가격': 'ticket_price',
-            '판매액': 'sales_amount',
-            '일별 예매율': 'daily_booking_rate',
-            '출연진': 'cast',
-            '공연 시설명': 'venue',
-            '공연장 최대 수용 수': 'max_capacity',
-            '줄거리': 'plot',
-            '공연 장르': 'genre'
-        }
-        
-        # 배우 컬럼 매핑
-        self.actor_columns = [f'actor_{i+1}' for i in range(5)]
     
-    """데이터 로드 및 전처리"""
+    """데이터 로드 및 모델 데이터 전처리"""
     def load_and_preprocess_data(self):
 
-        self.data = pd.read_csv('Data/Final/Combined_Musical_Data.csv')
+        self.data = pd.read_csv('c:\\Users\\USER\\Desktop\\이주원코드\\SKN_03_FINAL\\Data\\embedding.csv')
         # 원본 데이터 보존을 위한 copy
         self.original_data = self.data.copy()
-        # 컬럼명 영문으로
-        self.data = self.data.rename(columns=self.column_mapping)
         
-        # 시간 관련 특성(휴일)
-        self.data['is_weekend'] = self.data['viewing_day'].apply(
-            lambda x: self.is_weekend(x)
-        ).astype(int)
-        
-        # 출연진 컬럼 분리
-        actor_df = pd.DataFrame(self.data['cast'].str.split(',').tolist(), 
-                              columns=self.actor_columns)
-        self.data = pd.concat([self.data, actor_df], axis=1)
-        
-        # 레이블 인코딩
-        categorical_features = ['musical_title', 'viewing_day', 'venue', 'genre'] + self.actor_columns
+        categorical_features = ['title', 'cast', 'genre']
         
         for feature in categorical_features:
             self.label_encoders[feature] = LabelEncoder()
@@ -65,23 +36,13 @@ class MusicalRecommender:
             self.vocab_sizes[feature] = len(self.label_encoders[feature].classes_)
         
         # 수치형 변수 정규화
-        numerical_features = ['ticket_price', 'max_capacity']
+        numerical_features = ['percentage', 'ticket_price'] #percentage는 되어야하나 잘 모르겠다!
         for feature in numerical_features:
             mean = self.data[feature].mean()
             std = self.data[feature].std()
             self.data[feature] = (self.data[feature] - mean) / std
 
 
-    """휴일 여부를 판단하는 함수"""
-    # 정적 메서드로 선언
-    # 클래스 메서드가 아닌 정적 메서드로 선언하여 인스턴스 생성 없이 호출 가능 -> 독립적인 유틸리티 함수처럼 작용
-    # 메모리 사용 효율 증가 및 코드 간결성 향상
-    @staticmethod
-    def is_weekend(viewing_day):
-        # 주말(토,일) -> True
-        weekend_days = ['Sat', 'Sun']
-        return viewing_day in weekend_days
-    
 
     """DeepFM 모델 생성"""
     def create_deepfm_model(self):
@@ -93,12 +54,12 @@ class MusicalRecommender:
         first_order_features = []
         
         # 범주형 변수를 위한 임베딩 레이어
-        categorical_features = ['musical_title', 'viewing_day', 'venue', 'genre'] + self.actor_columns
+        categorical_features = ['title', 'actor', 'genre']
         
         for feature in categorical_features:
             input_layer = Input(shape=(1,), name=feature)
             vocab_size = self.vocab_sizes[feature]
-            embedding_dim = min(8, (vocab_size + 1) // 2)
+            embedding_dim = min(8, (vocab_size + 1))
             
             # FM 1차 특성
             first_order = Dense(1)(input_layer)
@@ -122,12 +83,6 @@ class MusicalRecommender:
         inputs['numerical'] = numerical_input
         embeddings.append(numerical_input)
 
-        # 이진 변수(휴일)
-        binary_input = Input(shape=(1,), name='binary')
-        binary_dense = Dense(1)(binary_input)
-        first_order_features.append(binary_dense)   
-        inputs['binary'] = binary_input
-        embeddings.append(binary_input)
 
         # FM 컴포넌트
         # 1차 특성 합
@@ -147,36 +102,12 @@ class MusicalRecommender:
         deep = Dense(64, activation='relu')(deep)
         deep = Dropout(0.2)(deep)
         
-        # 배우-장르 상호작용 레이어
-        # 배우와 장르의 임베딩만 추출
-        actor_embeddings = []
-        genre_embedding = None
-        
-        for feature in categorical_features:
-            if feature in self.actor_columns:
-                actor_embeddings.append(inputs[feature])
-            elif feature == 'genre':
-                genre_embedding = inputs[feature]
-        
-        # 배우들과 장르 간의 상호작용
-        actor_genre_interactions = []
-        for actor_input in actor_embeddings:
-            interaction = Concatenate()([actor_input, genre_embedding])
-            interaction = Dense(32, activation='relu')(interaction)
-            actor_genre_interactions.append(interaction)
-        
-        # 모든 배우-장르 상호작용 결합
-        actor_genre_combined = Concatenate()(actor_genre_interactions)
-        actor_genre_interaction = Dense(64, activation='relu')(actor_genre_combined)
-        actor_genre_interaction = Dropout(0.2)(actor_genre_interaction)
-        actor_genre_interaction = Dense(32, activation='relu')(actor_genre_interaction)
         
         # FM과 Deep 컴포넌트 결합 (배우-장르 상호작용 포함)
         combined = Concatenate()([
             first_order_sum,
             second_order,
-            deep,
-            actor_genre_interaction
+            deep
         ])
         
         output = Dense(1, activation='sigmoid')(combined)
@@ -195,374 +126,120 @@ class MusicalRecommender:
             metrics=['mae', 'mse']
         )
     
+    #학습 데이터 준비
+    def prepare_training_data(self):
+        # 카테고리형 데이터를 처리하여 임베딩 레이어에 적합하게 변환
+        categorical_features = ['title', 'cast', 'genre']
+        categorical_data = []
+        
+        for feature in categorical_features:
+            categorical_data.append(self.data[feature].values)
+        
+        # 수치형 변수는 정규화된 값으로 처리
+        numerical_features = ['percentage', 'ticket_price']
+        numerical_data = self.data[numerical_features].values
+        
+        # 카테고리형 데이터와 수치형 데이터를 합친 후, 튜플 형태로 반환
+        X = {
+            'title': categorical_data[0],
+            'cast': categorical_data[1],
+            'genre': categorical_data[2],
+            'numerical': numerical_data
+        }
+        
+        # 목표 변수 y 정의
+        y = self.data['target']
+        
+        # 8:2 비율로 학습 데이터와 테스트 데이터로 분리 (X와 y 모두 나눠야 함)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        return X_train, X_test, y_train, y_test
+    
+
     """모델 학습"""
     def train_model(self):
-        # 학습 데이터
-        X = self.prepare_training_data()
-        # 예매율을 0~1 범위로 정규화    
-        y = self.data['daily_booking_rate'].values / 100  
+        # 학습 데이터 준비
+        X_train, X_test, y_train, y_test = self.prepare_training_data()  # 학습 데이터를 준비
         
         # 모델 생성
-        self.create_deepfm_model()
+        self.create_deepfm_model()  # 모델 생성 함수
         
         # 모델 학습
         self.model.fit(
-            X,
-            y,
+            X_train,  # 학습 데이터
+            y_train,  # 학습 목표 변수
             batch_size=64,
             epochs=20,
-            verbose=0
+            verbose=1  # 학습 상태 출력
         )
-
-    """학습 데이터 준비"""
-    def prepare_training_data(self):
-        X = {}    
-        # 범주형 변수 처리
-        categorical_features = ['musical_title', 'viewing_day', 'venue', 'genre'] + self.actor_columns
-        
-        for feature in categorical_features:
-            if feature in self.actor_columns:
-                X[feature] = self.data[feature].values.astype('float32')
-            else:
-                X[feature] = self.data[feature].values.astype('float32')
-        
-        # 수치형 변수 처리 (시간 관련 특성 포함)
-        numerical_features = ['ticket_price', 'max_capacity']
-        binary_features = ['is_weekend']
-        X['numerical'] = self.data[numerical_features].values.astype('float32')
-        X['binary'] = self.data[binary_features].values.astype('float32')
-        
-        return X
-
-    """예측을 위한 입력 데이터 준비"""
-    def prepare_input_data(self, row):
-        X = {}
-        # 범주형 변수 처리
-        categorical_features = ['musical_title', 'viewing_day', 'venue', 'genre'] + self.actor_columns
-        
-        for feature in categorical_features:
-            if feature in self.actor_columns:
-                X[feature] = np.array([row[feature]]).astype('float32')
-            else:
-                X[feature] = np.array([row[feature]]).astype('float32')
-        
-        # 수치형 변수 처리 (시간 관련 특성 포함)
-        numerical_features = ['ticket_price', 'max_capacity']
-        binary_features = ['is_weekend']
-        X['numerical'] = row[numerical_features].values.reshape(1, -1).astype('float32')
-        X['binary'] = row[binary_features].values.reshape(1, -1).astype('float32')
-        return X
-
-    """피처 중요도 계산"""
-    def calculate_feature_importance(self):
-            X = self.prepare_training_data()
-            base_prediction = self.model.predict(X, verbose=0)
-            
-            feature_importance = {}
-            
-            # 범주형 변수 중요도
-            categorical_features = ['musical_title', 'viewing_day', 'venue', 'genre'] + self.actor_columns
-            for feature in categorical_features:
-                # 원본 값 저장
-                original_values = X[feature].copy()
-                # 해당 피처를 섞어서 중요도 측정
-                np.random.shuffle(X[feature])
-                shuffled_prediction = self.model.predict(X, verbose=0)
-                # 중요도 = 원본 예측과 섞은 후 예측의 차이
-                importance = np.mean(np.abs(base_prediction - shuffled_prediction))
-                feature_importance[feature] = importance
-                # 원본 값 복구
-                X[feature] = original_values
-            
-            # 수치형 변수 중요도
-            numerical_features = ['ticket_price', 'max_capacity']
-            original_values = X['numerical'].copy()
-            for i, feature in enumerate(numerical_features):
-                temp_values = X['numerical'].copy()
-                np.random.shuffle(temp_values[:, i])
-                X['numerical'] = temp_values
-                shuffled_prediction = self.model.predict(X, verbose=0)
-                importance = np.mean(np.abs(base_prediction - shuffled_prediction))
-                feature_importance[feature] = importance
-            X['numerical'] = original_values
-            
-            # 이진 변수 중요도
-            original_binary = X['binary'].copy()
-            np.random.shuffle(X['binary'])
-            shuffled_prediction = self.model.predict(X, verbose=0)
-            importance = np.mean(np.abs(base_prediction - shuffled_prediction))
-            feature_importance['is_weekend'] = importance
-            
-            # 중요도 정규화
-            total_importance = sum(feature_importance.values())
-            normalized_importance = {k: v/total_importance * 100 for k, v in feature_importance.items()}
-            
-            return dict(sorted(normalized_importance.items(), key=lambda x: x[1], reverse=True))
-
-
-    """배우 간 시너지 분석"""
-    def analyze_actor_synergy(self, actor1, actor2):
-
-        performances = self.original_data[
-            self.original_data['출연진'].apply(lambda x: actor1 in x and actor2 in x)
-        ]
-        
-        if len(performances) == 0:
-            return 0
-        
-        avg_booking_rate = performances['일별 예매율'].mean()
-        return avg_booking_rate
-
-    """배우의 판매액 영향 분석"""
-    def analyze_actor_sales_impact(self, actor):
-
-        performances = self.original_data[
-            self.original_data['출연진'].apply(lambda x: actor in x)
-        ]
-        
-        if len(performances) == 0:
-            return 0
-        
-        avg_sales = performances['판매액'].mean()
-        return avg_sales
-
-    """배우의 장르 선호도 분석"""
-    def analyze_actor_genre_preference(self, actor):
-
-        performances = self.original_data[
-            self.original_data['출연진'].apply(lambda x: actor in x)
-        ]
-        
-        if len(performances) == 0:
-            return {}
-        
-        genre_counts = performances['공연 장르'].value_counts()
-        total_performances = len(performances)
-        
-        genre_preferences = {
-            genre: (count / total_performances) * 100 
-            for genre, count in genre_counts.items()
-        }
-        
-        return genre_preferences
-
-    """추천"""
-    def recommend_musicals(self, favorite_actor, favorite_genre):
-        # 최적 가중치 계산 
-        self.favorite_actors = [favorite_actor]
-        self.favorite_genre = favorite_genre
-        optimal_weights = self.optimize_weights()
-        
-        predictions = []
-        
-        # 배우 분석
-        actor_sales_impact = self.analyze_actor_sales_impact(favorite_actor)
-        actor_genre_pref = self.analyze_actor_genre_preference(favorite_actor)
-        
-        # 배우의 평균 판매액 정규화 (0~1 사이)
-        max_sales = self.original_data['판매액'].max()
-        normalized_sales_impact = min(actor_sales_impact / max_sales, 1.0)  # 1.0으로 제한
-        
-        # 배우의 장르 선호도 확인
-        genre_match_score = actor_genre_pref.get(favorite_genre, 0) / 100
-        
-        for idx, row in self.original_data.iterrows():
-            # 출연진 리스트 생성
-            actors = row['출연진'].split(',')
-            has_favorite_actor = favorite_actor in actors
-            
-            # 시너지 점수 계산 (0~1 사이로 정규화)
-            synergy_score = 0
-            if has_favorite_actor:
-                for other_actor in actors:
-                    if other_actor != favorite_actor:
-                        synergy_score += self.analyze_actor_synergy(favorite_actor, other_actor)
-                synergy_score = min(synergy_score / (len(actors) - 1) if len(actors) > 1 else 0, 1.0)
-            
-            # 장르 일치 여부 확인
-            matches_genre = (row['공연 장르'] == favorite_genre)
-            
-            # 기본 점수 계산 및 정규화
-            input_data = self.prepare_input_data(self.data.iloc[idx])
-            base_score = self.model.predict(input_data, verbose=0)[0][0]
-            
-            # 가중치 적용
-            weights_sum = 1.0  # 기본 가중치
-            if has_favorite_actor:
-                weights_sum += optimal_weights['actor_weight']
-            if matches_genre:
-                weights_sum += optimal_weights['genre_weight']
-            if has_favorite_actor:
-                weights_sum += optimal_weights['synergy_weight'] * synergy_score
-            
-            # 정규화된 최종 점수 계산
-            final_score = (base_score * weights_sum) * 100
-            # final_score = min(max(final_score, 0), 100)  # 0~100 범위로 제한
-            # 현재 모델의 예측 통계를 사용하여 범위 제한
-            if self.prediction_stats:
-                mean_score = self.prediction_stats['mean']
-                std_score = self.prediction_stats['std']
-                max_allowed = mean_score + 2 * std_score  # 평균 + 2표준편차
-                min_allowed = max(self.prediction_stats['min'], mean_score - 2 * std_score)
-                final_score = min(max(final_score, min_allowed), max_allowed)
-
-
-            # 선호도 점수 계산
-            preference_score = 0
-            if has_favorite_actor:
-                preference_score += 40  # 배우 매치
-            if matches_genre:
-                preference_score += 30  # 장르 매치
-            if has_favorite_actor and matches_genre:
-                preference_score += 30  # 배우-장르 시너지
-            
-            predictions.append({
-                '뮤지컬 제목': row['뮤지컬 제목'],
-                '관람일': row['관람일'],
-                '관람요일': row['관람요일'],
-                '공연 시설명': row['공연 시설명'],
-                '공연 장르': row['공연 장르'],
-                '티켓 가격': row['티켓 가격'],
-                '출연진': row['출연진'],
-                '예측 예매율': final_score,
-                '선호도 점수': preference_score,
-                '시너지 점수': synergy_score * 100,
-                '배우 영향력': normalized_sales_impact * 100,
-                '장르 선호도': genre_match_score * 100
-            })
-        
-        # 정렬 기준: 선호도 점수를 우선, 그 다음 예측 예매율
-        top_3_recommendations = sorted(
-            predictions,
-            key=lambda x: (x['선호도 점수'], x['예측 예매율']),
-            reverse=True
-        )[:3]
-        
-        return top_3_recommendations
-
-    """모델 성능 평가"""
-    def evaluate_model(self):
-        X = self.prepare_training_data()
-        y = self.data['daily_booking_rate'].values / 100
         
         # 모델 평가
-        loss, mae, mse = self.model.evaluate(X, y, verbose=0)
+        test_loss = self.model.evaluate(X_test, y_test, verbose=0)  # 테스트 데이터로 모델 평가
+        print(f"Test Loss: {test_loss}")
         
-        # 예측
-        y_pred = self.model.predict(X, verbose=0)
-        
-        # 다양한 메트릭 계산
-        r2 = r2_score(y, y_pred)
-        rmse = np.sqrt(mse)
-        
-        # 피처 중요도 계산
-        feature_importance = self.calculate_feature_importance()
-        
-        # 예측값 분포 분석
-        pred_mean = np.mean(y_pred) * 100
-        pred_std = np.std(y_pred) * 100
-        pred_min = np.min(y_pred) * 100
-        pred_max = np.max(y_pred) * 100
+        return test_loss
 
-        # 예측값 통계 저장
-        self.prediction_stats = {
-            'mean': pred_mean,
-            'std': pred_std,
-            'min': pred_min,
-            'max': pred_max
-        }
+"""피쳐 중요도 계산 함수"""
+        # feature_importance 함수 수정
+    def calculate_feature_importance(self):
+        # 학습 데이터 준비
+        X_train, X_test, y_train, y_test = self.prepare_training_data()
         
-        return {
-            'Loss': loss,
-            'MAE': mae * 100,
-            'RMSE': rmse * 100,
-            'R2 Score': r2,
-            'Feature Importance': feature_importance,
-            'Prediction Stats': {
-                'Mean': pred_mean,
-                'Std': pred_std,
-                'Min': pred_min,
-                'Max': pred_max
+        # permutation_importance를 통해 피쳐 중요도 계산
+        result = permutation_importance(self.model, X_test, y_test, n_repeats=10, random_state=42, n_jobs=-1, scoring='neg_mean_squared_error')
+        
+        # 각 피쳐의 중요도 반환 (피쳐 이름, 중요도 점수, 표준편차)
+        feature_importances = {}
+        
+        categorical_features = ['title', 'cast', 'genre']
+        numerical_features = ['percentage', 'ticket_price']
+        
+        feature_names = categorical_features + numerical_features
+        for i, feature_name in enumerate(feature_names):
+            feature_importances[feature_name] = {
+                'importance': result.importances_mean[i],
+                'std': result.importances_std[i]
             }
-        }
+        
+        # 중요도 출력
+        print("Feature Importance:")
+        for feature_name, importance_data in feature_importances.items():
+            print(f"{feature_name} - Importance: {importance_data['importance']:.4f}, Std: {importance_data['std']:.4f}")
+        
+        return feature_importances
 
-    """가중치 최적화"""
-    def optimize_weights(self):
-        # 검증 데이터셋 생성
-        X = self.prepare_training_data()
-        y = self.data['daily_booking_rate'].values / 100
-        X_train, X_val, y_train, y_val = train_test_split(
-            self.data, y, test_size=0.2, random_state=42
-        )
-        
-        # 탐색할 가중치 범위
-        actor_weights = np.arange(0.2, 0.7, 0.1)  # 0.2 ~ 0.6
-        genre_weights = np.arange(0.2, 0.6, 0.1)  # 0.2 ~ 0.5
-        synergy_weights = np.arange(0.1, 0.5, 0.1) # 0.1 ~ 0.4
-        
-        best_weights = {
-            'actor_weight': 0.4,
-            'genre_weight': 0.3,
-            'synergy_weight': 0.3
+
+    """뮤지컬 추천"""
+    def recommend_musicals(self, user_input):
+        # 사용자 입력을 바탕으로 데이터 생성
+        user_data = {
+            'title': [],  # 모든 타이틀 ID 추가
+            'cast': [],   # 해당 유저가 선호할 캐스트 ID
+            'genre': [],  # 선호 장르 ID
+            'numerical': []  # 수치형 데이터 (예: 예산, 티켓 가격 등)
         }
-        best_score = float('-inf')
         
-        # Grid Search
-        for aw, gw, sw in product(actor_weights, genre_weights, synergy_weights):
-            # 가중치 합이 1보다 크지 않도록
-            if aw + gw + sw > 1.0:
-                continue
-            
-            val_scores = []
-            for idx, row in X_val.iterrows():
-                # 기본 예측
-                input_data = self.prepare_input_data(row)
-                base_score = self.model.predict(input_data, verbose=0)[0][0]
-                
-                # 가중치 적용
-                actors = row['cast'].split(',')
-                has_favorite_actor = any(
-                    actor in self.favorite_actors for actor in actors
-                )
-                matches_genre = (
-                    row['genre'] == self.label_encoders['genre'].transform([self.favorite_genre])[0]
-                )
-                
-                # 시너지 점수 계산
-                synergy_score = 0
-                if has_favorite_actor:
-                    for actor in actors:
-                        if actor in self.favorite_actors:
-                            for other_actor in actors:
-                                if other_actor != actor:
-                                    synergy_score += self.analyze_actor_synergy(actor, other_actor)
-                    synergy_score = min(synergy_score / (len(actors) - 1) if len(actors) > 1 else 0, 1.0)
-                
-                # 가중치 적용
-                weights_sum = 1.0
-                if has_favorite_actor:
-                    weights_sum += aw
-                if matches_genre:
-                    weights_sum += gw
-                if has_favorite_actor:
-                    weights_sum += sw * synergy_score
-                
-                final_score = base_score * weights_sum
-                val_scores.append(final_score)
-            
-            # 검증 세트에 대한 성능 평가
-            val_rmse = np.sqrt(np.mean((y_val - val_scores) ** 2))
-            val_r2 = r2_score(y_val, val_scores)
-            
-            # 복합 점수 계산 (RMSE는 낮을수록, R2는 높을수록 좋음)
-            current_score = -val_rmse + val_r2
-            
-            if current_score > best_score:
-                best_score = current_score
-                best_weights = {
-                    'actor_weight': aw,
-                    'genre_weight': gw,
-                    'synergy_weight': sw
-                }
+        # 가능한 뮤지컬 ID에 대해 추천 점수 계산
+        all_titles = range(self.vocab_sizes['title'])  # 모든 타이틀 ID
+        for title_id in all_titles:
+            user_data['title'].append(title_id)
+            user_data['cast'].append(user_input['cast'])  # 사용자 선호 캐스트
+            user_data['genre'].append(user_input['genre'])  # 사용자 선호 장르
+            user_data['numerical'].append(user_input['numerical'])  # 사용자 수치형 입력
         
-        return best_weights
+        # 데이터 프레임 형태로 변환
+        X_input = {
+            'title': np.array(user_data['title']),
+            'cast': np.array(user_data['cast']),
+            'genre': np.array(user_data['genre']),
+            'numerical': np.array(user_data['numerical'])
+        }
+        
+        # 예측 점수 계산
+        predictions = self.model.predict(X_input)
+        
+        # 점수가 가장 높은 상위 4개의 뮤지컬 선택
+        top_indices = predictions.argsort()[-4:][::-1]
+        top_titles = [self.label_encoders['title'].inverse_transform([idx])[0] for idx in top_indices]
+        
+        return top_titles
