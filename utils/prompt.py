@@ -2,9 +2,13 @@ import pandas as pd
 import os
 import openai
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.callbacks import get_openai_callback
+# from langchain.callbacks import get_openai_callback
+from langchain_community.callbacks.manager import get_openai_callback
 from langchain_community.llms import OpenAI
-from config import add_genre_file_name, input_file_name, file_path
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import config
 
 class GenreStoryUpdater:
     def __init__(self):

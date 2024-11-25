@@ -1,13 +1,15 @@
 import pandas as pd
 import re
 from utils.DataLoading import DataLoader
-import os 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import config
 
 class Data_Preprocessor:
     def __init__(self, file_path, file_name):
-        self.file_path = f"{file_path}/{file_name}"
-        self.df = DataLoader.load_json_to_dataframe(self.file_path)
+        self.file_path = f"{file_path}"
+        self.df = DataLoader.load_json_to_dataframe(f'{self.file_path}/{config.input_file_name}')
         self.last_processing_file_name = config.last_processing_file_name
         file_path = config.file_path
         
@@ -108,10 +110,8 @@ class Data_Preprocessor:
             print(f"ticket_price 변환 오류: {ticket_price}, 오류 메시지: {e}")
             return 0
 
-
 def main():    
     Data_Preprocessor.run()
-
 
 if __name__ == "__main__":
     main()

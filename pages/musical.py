@@ -1,35 +1,28 @@
 import streamlit as st
 from components.sidebar import add_custom_sidebar
-from model.RecommendationModel import MusicalRecommender
 import pandas as pd
+import itertools
+import importlib.util
+import time
+from hgtk.text import decompose, compose
+import sys
 import os
-import subprocess
+# main.py 경로 추가
+current_dir = os.path.dirname(os.path.abspath(__file__))
+main_dir = os.path.abspath(os.path.join(current_dir, ".."))
+sys.path.append(main_dir)
 
-"""전처리된 파일의 존재 여부 확인 후 없는 경우만 Preprocessing.py를 실행하는 함수"""
-def check_and_run_preprocessing():
-    
-    preprocessed_file_path = 'Data/Final/Combined_Musical_Data.csv'
-    
-    if not os.path.exists(preprocessed_file_path):
-        st.warning("데이터가 없음. 전처리 시작...")
-        try:
-            # Preprocessing.py 실행
-            subprocess.run(['python', 'model/Preprocessing.py'], check=True)
-            
-            if not os.path.exists(preprocessed_file_path):
-                raise Exception("전처리 과정 실패")
-                
-            st.success("전처리 완료")
-        except Exception as e:
-            st.error(f"전처리 중 오류 발생: {str(e)}")
-            st.stop()
-    return True
+# utils 디렉토리 경로 추가
+utils_dir = os.path.abspath(os.path.join(current_dir, "../utils"))
+sys.path.append(utils_dir)
 
+from utils.All_Musical_Process import Musical_Process
+from utils.All_Musical_Process import Recommender
+import config
+
+"""기본 틀"""
 # 사이드바 추가
 add_custom_sidebar()
-
-# 전처리 확인 프로세스
-check_and_run_preprocessing()
 
 # CSS 스타일
 st.markdown("""
@@ -52,8 +45,48 @@ st.markdown("""
     border-radius: 10px;
     margin: 20px 0;
 }
+
+.actor-list-item {
+    cursor: pointer;
+    margin-bottom: 5px;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+}
+.actor-list-item:hover {
+    background-color: #e6e6e6;
+}
+
 </style>
 """, unsafe_allow_html=True)
+
+
+# Musical_Process 실행 함수
+def run_musical_process():
+    try:
+        # All_Musical_Process.py 경로 설정
+        script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../utils/All_Musical_Process.py"))
+        # 모듈 로드 및 실행
+        spec = importlib.util.spec_from_file_location("All_Musical_Process", script_path)
+        all_musical_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(all_musical_module)
+    except Exception as e:
+        st.error(f"All_Musical_Process 실행 중 오류 발생: {e}")
+
+
+# 로딩 화면 표시 함수
+def show_loading_screen():
+    # 빈 컨테이너 생성
+    placeholder = st.empty()
+    
+    # 스피너 표시
+    with placeholder.container():
+        with st.spinner("로딩 중... 잠시만 기다려주세요(처음에는 로딩이 길어질 수 있습니다.)"):
+            run_musical_process()
+    placeholder.empty()
+
+show_loading_screen()
 
 # 메인 페이지 제목
 st.markdown("# 뮤지컬 chat")
@@ -66,44 +99,94 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 모델 및 데이터 사용
-@st.cache_resource
-def load_recommender():
-    recommender = MusicalRecommender()
-    recommender.load_and_preprocess_data()
-    recommender.create_deepfm_model()
-    recommender.train_model()
+# 배우 데이터 로드
+@st.cache_data
+def load_actor_list():
+    file = f'{config.file_path}/actor_genre_df.json'
+    if not os.path.exists(file):
+        raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file}")
     
-    # 모델 성능 평가
-    metrics = recommender.evaluate_model()
-    st.markdown("\n=== 모델 성능 평가 ===")
-    st.text(f"Loss: {metrics['Loss']:.4f}")
-    st.text(f"MAE: {metrics['MAE']:.2f}%")
-    st.text(f"RMSE: {metrics['RMSE']:.2f}%")
-    st.text(f"R2 Score: {metrics['R2 Score']:.4f}")
+    actor_genre_df = pd.read_json(file, lines=True)
     
-    st.markdown("\n=== 피처 중요도 ===")
-    for feature, importance in metrics['Feature Importance'].items():
-        st.text(f"{feature}: {importance:.2f}%")
-    
-    st.markdown("\n=== 예측값 통계 ===")
-    pred_stats = metrics['Prediction Stats']
-    st.text(f"평균: {pred_stats['Mean']:.2f}%")
-    st.text(f"표준편차: {pred_stats['Std']:.2f}%")
-    st.text(f"최소값: {pred_stats['Min']:.2f}%")
-    st.text(f"최대값: {pred_stats['Max']:.2f}%")
-    
-    return recommender
+    actor_list = actor_genre_df["actor"].tolist()
+    return sorted(actor_list)
 
-# 모델 로드
-try:
-    recommender = load_recommender()
-except Exception as e:
-    st.error(f"모델 로딩 중 오류 발생: {str(e)}")
-    st.stop()
+actor_list = load_actor_list()
 
-# 장르 매핑
-genre_mapping = {
+st.markdown("## 배우와 장르 선택")
+
+def get_chosung(text):
+    """한글 문자열에서 초성만 추출"""
+    result = ""
+    for char in text:
+        if '가' <= char <= '힣':  # 한글 범위 내에서만 분리
+            decomp = decompose(char)
+            if decomp[0] != '':  # 초성 존재
+                result += decomp[0]
+        else:
+            result += char  # 한글 외에는 그대로 추가
+    return result
+
+
+# 세션 상태 초기화
+if "selected_actor" not in st.session_state:
+    st.session_state["selected_actor"] = None
+if "favorite_actor" not in st.session_state:
+    st.session_state["favorite_actor"] = ""
+if "filtered_actors" not in st.session_state:
+    st.session_state["filtered_actors"] = []
+
+# 배우 입력창
+favorite_actor = st.text_input(
+    "좋아하는 배우를 입력하세요",
+    placeholder="배우 이름 또는 초성을 입력하세요",
+    value=st.session_state["favorite_actor"],
+    key="favorite_actor_input"
+)
+
+# 검색 처리
+if favorite_actor != st.session_state["favorite_actor"]:
+    st.session_state["favorite_actor"] = favorite_actor
+
+    search_query = st.session_state["favorite_actor"]
+
+    if search_query:
+        # 단어와 초성 구분
+        if all('가' <= char <= '힣' for char in search_query):  # 완성된 단어 입력 시
+            st.session_state["filtered_actors"] = [
+                actor for actor in actor_list if actor[:len(search_query)] == search_query
+            ]
+        else:  # 초성 입력 시
+            user_chosung = get_chosung(search_query)
+            st.session_state["filtered_actors"] = [
+                actor for actor in actor_list
+                if user_chosung == get_chosung(actor[:len(search_query)])  # 초성 매칭
+            ]
+
+# 검색 결과 동적 표시
+if st.session_state["filtered_actors"]:
+    st.markdown("### 검색 결과:")
+    for actor in st.session_state["filtered_actors"]:
+        if st.button(actor, key=f"actor_{actor}"):
+            st.session_state["selected_actor"] = actor
+            st.session_state["favorite_actor"] = actor  # 입력창 업데이트
+            st.session_state["filtered_actors"] = []  # 검색 결과 초기화
+            break
+
+# 선택된 배우 출력
+if st.session_state["selected_actor"]:
+    st.markdown(f"**선택된 배우:** {st.session_state['selected_actor']}")
+
+# 초기화 버튼
+if st.button("초기화"):
+    st.session_state["selected_actor"] = None
+    st.session_state["favorite_actor"] = ""
+    st.session_state["filtered_actors"] = []
+
+
+
+# 장르처리
+base_genres = {
     1: 'Historical',
     2: 'Romance',
     3: 'Drama',
@@ -111,64 +194,63 @@ genre_mapping = {
     5: 'Comedy'
 }
 
-# 폼
-with st.form(key='musical_form'):
-    # 배우 입력
-    favorite_actor = st.text_input("좋아하는 배우", placeholder="배우 이름을 입력하세요")
-    
-    # 장르 선택 (숫자로 선택)
-    genre_choice = st.selectbox(
-        "좋아하는 장르를 선택하세요",
-        options=list(range(1, 6)),
-        format_func=lambda x: f"{x}. {genre_mapping[x]}"
-    )
-    
-    submit = st.form_submit_button("추천받기")
+# 장르 조합 생성
+def generate_genre_combinations(base_genres):
+    combinations = list(itertools.combinations(base_genres.items(), 2))
+    combined_genres = {
+        idx + 6: f"{genre1[1]} & {genre2[1]}"
+        for idx, (genre1, genre2) in enumerate(combinations)
+    }
+    return combined_genres
 
-if submit:
-    if not favorite_actor.strip():
-        st.error("배우 이름을 입력해주세요.")
+genre_mapping = {**base_genres, **generate_genre_combinations(base_genres)}
+
+# 장르 선택
+genre_choice = st.selectbox(
+    "좋아하는 장르를 선택하세요",
+    options=list(genre_mapping.keys()),
+    format_func=lambda x: f"{x}. {genre_mapping[x]}"
+)
+
+
+# 추천 버튼
+if st.button("추천받기"):
+    if not st.session_state["selected_actor"]:
+        st.error("배우를 선택해주세요.")
     else:
-        try:
-            favorite_genre = genre_mapping[genre_choice]
-            
-            st.text("\n추천 뮤지컬을 찾는 중...")
-            with st.spinner('추천 뮤지컬을 찾는 중...'):
-                recommendations = recommender.recommend_musicals(favorite_actor, favorite_genre)
-            
-            if recommendations:
-                st.markdown("### 챗봇 왈 : 당신에게 추천드리는 뮤지컬입니다.")
-                # 추천 결과 출력
-                for i, rec in enumerate(recommendations, 1):
-                    if i == 1:
-                        # 첫 번째 추천작은 더 크게 표시
-                        col1, col2 = st.columns([2, 1])
+        st.markdown("### 추천 결과")
+        with st.spinner("추천 결과를 생성하는 중입니다... 잠시만 기다려주세요."):
+            try:
+                recommender = Recommender()
+                recommender.load_data()
+                recommender.load_model()
+                
+                genre_id = genre_choice
+                prediction, similar_musicals = recommender.run(genre_id, st.session_state["selected_actor"])
+
+                if similar_musicals is not None and not similar_musicals.empty:
+                    st.markdown("### 추천된 뮤지컬 목록")
+                    for idx, (_, musical) in enumerate(similar_musicals.iterrows()):
+                        col1, col2 = st.columns([1, 2]) 
                         with col1:
-                            st.image("static/images/display_image_1.jpg", width=400)
+                            if pd.notna(musical["poster"]):
+                                st.image(
+                                    musical["poster"],
+                                    caption=musical["title"],
+                                    use_container_width=True
+                                )
                         with col2:
                             st.markdown(f"""
-                            ### {rec['뮤지컬 제목']}
-                            - 예측 예매율: {rec['예측 예매율']:.2f}%
-                            - 공연일: {rec['관람일']} ({rec['관람요일']})
-                            - 장르: {rec['공연 장르']}
-                            - 공연장: {rec['공연 시설명']}
-                            - 티켓 가격: {rec['티켓 가격']:,}원
-                            - 출연진: {rec['출연진']}
+                            - **[{idx+1}] 제목**: {musical['title']}
+                            - **장소**: {musical['place_x']}
+                            - **기간**: {musical['start_date_x']} ~ {musical['end_date_x']}
+                            - **출연진**: {musical['cast']}
+                            - **장르**: {musical['genre']}
+                            - **티켓 가격**: {musical['ticket_price']}원
                             """)
-                    else:
-                        # 나머지 추천작
-                        st.markdown(f"""
-                        #### {i}번째 추천 뮤지컬
-                        - 제목: {rec['뮤지컬 제목']}
-                        - 예측 예매율: {rec['예측 예매율']:.2f}%
-                        - 공연일: {rec['관람일']} ({rec['관람요일']})
-                        - 장르: {rec['공연 장르']}
-                        - 공연장: {rec['공연 시설명']}
-                        - 티켓 가격: {rec['티켓 가격']:,}원
-                        - 출연진: {rec['출연진']}
-                        """)
-            else:
-                st.warning(f"\n{favorite_actor}와(과) {favorite_genre} 장르의 공연을 찾을 수 없습니다.")
-                
-        except Exception as e:
-            st.error(f"추천 과정에서 오류가 발생했습니다: {str(e)}")
+                        if idx == 2:
+                            break
+                else:
+                    st.warning("추천 결과가 없습니다.")
+            except Exception as e:
+                st.error(f"추천 과정에서 오류가 발생했습니다: {str(e)}")
