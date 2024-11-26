@@ -22,11 +22,8 @@ class GenreStoryUpdater:
         포스터 URL: {poster}
         
         1. 이 뮤지컬의 장르를 드라마/감동, 코미디/유머, 액션/스릴러, 판타지/어드벤처, 음악중심/주크박스 이 5가지 카테고리 중에 적절한 것을 골라서 적어주세요.
-        2. 이 뮤지컬의 줄거리를 50~100자로 요약해서 적어주세요.
-        
         아래와 같은 형식으로 답변해주세요:
         장르: <장르>
-        줄거리: <줄거리>
         """)
         self.chat_model = OpenAI(
             model="gpt-3.5-turbo",
@@ -37,19 +34,17 @@ class GenreStoryUpdater:
 
     def update_genre_and_story(self, df):
         for idx, row in df.iterrows():
-            if pd.notnull(row['genre']) and pd.notnull(row['story']):
+            if pd.notnull(row['genre']):
                 genre = row['genre']
-                story = row['story']
             else:
-                genre, story = self.get_genre_and_story(row)
+                genre= self.get_genre_and_story(row)
 
             df.at[idx, "genre"] = genre
-            df.at[idx, "story"] = story
 
     def get_genre_and_story(self, row):
         
-        if row['genre'] and row['story']:
-            return row['genre'], row['story']
+        if row['genre']:
+            return row['genre']
         else:
             try:
                 prompt = self.prompt_template.format_messages(
@@ -68,17 +63,16 @@ class GenreStoryUpdater:
                     print(f"{self.cnt}: 호출에 청구된 총 금액(USD): \t${self.total_charge}")
 
                 genre = content.split("장르: ")[1].split("\n")[0].strip()
-                story = content.split("줄거리: ")[1].strip()
                 
-                return genre, story
+                return genre
             except Exception as e:
                 print(f"오류 발생: {e}")
                 return "", ""
 
 def main():
     # 파일 경로 설정
-    add_genre_story_path = f'{file_path}/{add_genre_file_name}'
-    processed_performance_details_path = f'{file_path}/{input_file_name}'
+    add_genre_story_path = f'{config.file_path}/{config.add_genre_file_name}'
+    processed_performance_details_path = f'{config.file_path}/{config.processed_performance_details}'
     
     # 파일 존재 여부 확인
     if os.path.exists(add_genre_story_path):
@@ -87,7 +81,6 @@ def main():
         # processed_perfomance_details.json -> 데이터프레임 생성
         df = pd.read_json(processed_performance_details_path)
         df['genre'] = None
-        df['story'] = None
 
     updater = GenreStoryUpdater()
     updater.update_genre_and_story(df)

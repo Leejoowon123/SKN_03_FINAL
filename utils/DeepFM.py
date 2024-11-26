@@ -1,193 +1,155 @@
-import keras
-from DataLoading import DataLoader
-from model_data_preprocessing import ModelDataPreprocessor
-from feature_importance import FeatureImportance
-from model_loading import ModelHandler
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.layers import Input, Dense, Flatten, Concatenate, Embedding, Add, Multiply
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.models import Model
+# 필요한 라이브러리 임포트
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
 import numpy as np
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Embedding, Dense, Concatenate, Flatten, Add, Lambda, Dropout
+import tensorflow as tf
+from tensorflow.keras import backend as K
+import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping
+import pickle
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import config
 
-
-
-class DeepFM:
+# MusicalRecommender 클래스 정의
+class MusicalRecommender:
     def __init__(self):
-        self.file_path = config.file_path
-        self.embedding_file = config.embedding_file
-        self.model_name = config.model_name
+        self.data = None
+        self.original_data = None
         self.model = None
-        self.fm_features = config.fm_features
-        self.deep_features = config.deep_features
-
-        self.df = DataLoader.load_json_to_dataframe(self.embedding_file)
-        self.target_column = config.target_column
-        self.y = self.df[self.target_column].values
-        self.features = self.df.drop(columns=[self.target_column]).values
-        self.embedding_input_dims = {
-            feature: int(self.df[feature].nunique()) + 1 for feature in self.fm_features
-        }
-        self.embedding_output_dim = 8 
-
-    def build_model(self):
-        """DeepFM 모델 생성"""
-        """FM Features와 Deep Features에 Input 정의"""
-        fm_inputs = {
-        feature: Input(shape=(1,), name=f"fm_input_{feature}") for feature in self.fm_features
-        }
-
-        deep_inputs = {
-            feature: Input(shape=(1,), name=f"deep_input_{feature}")
-            for feature in self.deep_features
-        }
+        self.label_encoders = {}
+        self.vocab_sizes = {}
+    
+    def load_and_preprocess_data(self):
+        # 데이터 로드 및 전처리
+        # Load data (Ensure the file is in the same directory or provide correct relative path)
+        self.data = pd.read_json(config.df_with_negatives_path, lines=True)  # Update the path to a relative one if necessary
+        self.original_data = self.data.copy()
         
-        """FM features 임베딩 정의"""
-        embeddings = {}
-        for feature in self.fm_features:
-            embeddings[feature] = Embedding(
-                input_dim=self.embedding_input_dims[feature],
-                output_dim=self.embedding_output_dim,
-                name=f"embedding_{feature}",
-            )
-            
-        """1차 상호작용 (FM Features)"""
-        fm_first_order = [Flatten()(embedding(fm_inputs[feature])) for feature, embedding in embeddings.items()]
-        fm_first_order_concat = Concatenate()(fm_first_order)
+        categorical_features = ['title', 'cast', 'genre']
+        
+        # 범주형 변수 레이블 인코딩
+        for feature in categorical_features:
+            self.label_encoders[feature] = LabelEncoder()
+            self.data[feature] = self.label_encoders[feature].fit_transform(self.data[feature].astype(str))
+            self.vocab_sizes[feature] = len(self.label_encoders[feature].classes_)
 
-        """2차 상호작용 (FM Features)"""
-        fm_second_order_sum = Add()(
-            [Flatten()(Multiply()([embeddings[feature_i](fm_inputs[feature_i]), embeddings[feature_j](fm_inputs[feature_j])]))
-            for i, feature_i in enumerate(self.fm_features)
-            for j, feature_j in enumerate(self.fm_features) if i < j]
-        )
-
-        """Deep Features 연결"""
-        deep_concat = Concatenate()(
-            [deep_inputs[feature] for feature in self.deep_features]
-        )
-        dense_layer_1 = Dense(128, activation='relu')(deep_concat)
-        dense_layer_2 = Dense(64, activation='relu')(dense_layer_1)
-        dense_layer_3 = Dense(32, activation='relu')(dense_layer_2)
-
-        """FM과 Deep Component 결합"""
-        combined = Concatenate()([fm_first_order_concat, fm_second_order_sum, dense_layer_3])
-
-        """출력층"""
-        output = Dense(1, activation='linear', name="output")(combined)
-
-        self.model = Model(inputs=[*fm_inputs.values(), *deep_inputs.values()], outputs=output)
-        self.model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-        print("Model Build 성공")
-
-    def prepare_data(self):
-        print("데이터 준비중...")
-
-        """피처 Clipping"""
-        for feature, max_allowed in self.embedding_input_dims.items():
-            if feature in self.df.columns:
-                self.df[feature] = self.df[feature].clip(upper=max_allowed - 1).astype(int)
-            
-        """FM features 정규화"""
-        scaler_fm = MinMaxScaler()
-        if all(feature in self.df.columns for feature in self.fm_features):
-            self.df[self.fm_features] = scaler_fm.fit_transform(self.df[self.fm_features])
-
-        """Deep features 정규화"""
-        scaler_deep = MinMaxScaler()
-        if all(feature in self.df.columns for feature in self.deep_features):
-            self.df[self.deep_features] = scaler_deep.fit_transform(self.df[self.deep_features])
-
-        """FM, Deep컴포넌트 input 준비"""
-        X_fm = self.df[self.fm_features].values
-        X_deep = self.df[self.deep_features].values
-
-        """Target 준비"""
-        if self.target_column in self.df.columns:
-            y = self.df[self.target_column].values
+    def prepare_training_data(self):
+        # 범주형 데이터와 수치형 데이터를 처리
+        categorical_features = ['title', 'cast', 'genre']
+        categorical_data = {}
+        
+        for feature in categorical_features:
+            categorical_data[feature] = self.data[feature].values  # 각 범주형 데이터를 딕셔너리에 저장
+        
+        
+        # X 구성: 카테고리형 데이터와 수치형 데이터를 모두 합친 DataFrame 생성
+        X = pd.DataFrame({
+            'title': categorical_data['title'],
+            'cast': categorical_data['cast'],
+            'genre': categorical_data['genre']  # 첫 번째 수치형 변수
+        })
+        
+        # 타겟 데이터
+        y = self.data['target']
+        
+        # X와 y의 길이가 일치하는지 확인
+        print(f"Length of X: {len(X)}")
+        print(f"Length of y: {len(y)}")
+        
+        # 길이가 일치하면 훈련/테스트 데이터로 분리
+        if len(X) == len(y):
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         else:
-            raise KeyError(f"데이터 프레임에서 Target column을 찾을 수 없음: '{self.target_column}' ")
-
-        return train_test_split(X_fm, X_deep, y, test_size=0.2, random_state=42)
-
-    def train(self):
-        """모델 훈련"""
-        # 데이터 준비
-        X_fm_train, X_fm_val, X_deep_train, X_deep_val, y_train, y_val = self.prepare_data()
-
-        # 모델 빌드
-        self.build_model()
-
-        train_inputs = {f"fm_input_{feature}": X_fm_train[:, i].reshape(-1, 1) for i, feature in enumerate(self.fm_features)}
-        train_inputs.update({f"deep_input_{feature}": X_deep_train[:, i].reshape(-1, 1) for i, feature in enumerate(self.deep_features)})
+            print("Error: Lengths of X and y do not match!")
         
-        val_inputs = {f"fm_input_{feature}": X_fm_val[:, i].reshape(-1, 1) for i, feature in enumerate(self.fm_features)}
-        val_inputs.update({f"deep_input_{feature}": X_deep_val[:, i].reshape(-1, 1) for i, feature in enumerate(self.deep_features)})
-        # 모델 훈련
-        self.model.fit(train_inputs, y_train, epochs=10, batch_size=32, validation_data=(val_inputs, y_val))
+        return X_train, X_test, y_train, y_test
+    
+    def create_deepfm_model(self):
+        # 모델 구조 정의
+        inputs = {
+            'title': Input(shape=(1,), dtype=tf.int32, name='title'),
+            'cast': Input(shape=(1,), dtype=tf.int32, name='cast'),
+            'genre': Input(shape=(1,), dtype=tf.int32, name='genre')
+        }
+        
+        embeddings = {
+            'title': Embedding(self.vocab_sizes['title'], 8)(inputs['title']),
+            'cast': Embedding(self.vocab_sizes['cast'], 8)(inputs['cast']),
+            'genre': Embedding(self.vocab_sizes['genre'], 8)(inputs['genre']),
+        }
+        
+        # Flatten embeddings and concatenate with numerical data
+        concatenated = Concatenate()([Flatten()(embeddings['title']), Flatten()(embeddings['cast'])])
+        
+        # Hidden layers
+        x = Dense(128, activation='relu')(concatenated)
+        x = Dropout(0.3)(x)
+        x = Dense(64, activation='relu')(x)
+        x = Dropout(0.3)(x)
+        x = Dense(32, activation='relu')(x)
+        output = Dense(1, activation='sigmoid')(x)  # For binary classification
 
-        # 모델 평가 및 저장
-        self.evaluate_and_save(val_inputs, y_val)
+        self.model = Model(inputs=[inputs['title'], inputs['cast'], inputs['genre']], outputs=output)
+        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        self.model.summary()
 
-    def evaluate_and_save(self, val_inputs, y_val):
-        print("모델 평가 및 피쳐 중요도 계산...")
+    def train_model(self):
+        X_train, X_test, y_train, y_test = self.prepare_training_data()
+        self.create_deepfm_model()
 
-        """모델 성능 평가"""
-        try:
-            print("성능 평가...")
-            evaluator = FeatureImportance()
-            evaluator.evaluate_model_performance(self.model, val_inputs, y_val)
-        except Exception as e:
-            print(f"모델 성능 평가 중 오류: {e}")
+        # EarlyStopping 콜백 정의
+        early_stopping = EarlyStopping(
+            monitor='val_loss',  # 검증 손실을 모니터링
+            patience=3,          # 손실이 개선되지 않으면 3 에포크 후 중지
+            restore_best_weights=True  # 가장 좋은 모델 가중치를 복원
+        )
+        
+        # Train the model and display progress
+        history = self.model.fit(
+            [X_train['title'], X_train['cast'], X_train['genre']],
+            y_train,
+            batch_size=64,
+            epochs=20,
+            verbose=1,
+            validation_data=([X_test['title'], X_test['cast'], X_test['genre']], y_test),
+            callbacks=[early_stopping]  
+        )
+        
+        # Plot training history
+        plt.plot(history.history['accuracy'], label='accuracy')
+        plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.ylim([0, 1])
+        plt.legend(loc='lower right')
+        plt.savefig(config.picture_file_path)
+        
+        test_loss, test_acc = self.model.evaluate(
+            [X_test['title'], X_test['cast'], X_test['genre']],
+            y_test, verbose=2
+        )
 
-        """SHAP 계산"""
-        print("피쳐 중요도 계산...")
-        try:
-            fm_features = self.fm_features
-            deep_features = self.deep_features
-            if isinstance(val_inputs, dict):
-                combined_inputs = np.hstack([val_inputs[key] for key in sorted(val_inputs.keys())]+
-                                            [val_inputs[f"deep_input_{feature}"] for feature in deep_features])
-            else:
-                """array format인 경우"""
-                combined_inputs = val_inputs
+        self.save_model(config.save_model_path)
+        print(f"Test Accuracy: {test_acc}")
 
-            evaluator.visualize_shap(self.model, combined_inputs, fm_features, deep_features)
-        except Exception as e:
-            print(f"중요도 계산 중 오류: {e}")
+        # return test_loss, test_acc
 
-        """피처 중요도 계산"""
-        print("Visualizing feature importance...")
-        try:
-            feature_names = self.fm_features + self.deep_features
-            importance_scores = np.random.random(len(feature_names))
-            evaluator.visualize_feature_importance(importance_scores, feature_names)
-        except Exception as e:
-            print(f"Error during feature importance visualization: {e}")
+    def save_model(self, path):
+        with open(path, 'wb') as f:
+            pickle.dump(self.model, f)
 
-        """배우 간 코사인 유사도 계산 저장"""
-        print("유사도 계산...")
-        try:
-            evaluator.calculate_cosine_similarity(self.model, feature_name="cast_1", save_path="cosine_similarity.png")
-        except Exception as e:
-            print(f"유사도 계산 중 오류: {e}")    
+    def run(self):
+        self.load_and_preprocess_data()
+        self.train_model()
 
-        # 모델 저장
-        try:
-            print("모델 저장...")
-            model_handler = ModelHandler()
-            model_handler.save_model(self.model, f"{config.model_file_path}/{self.model_name}")
-            print("모델 저장 완료")
-        except Exception as e:
-            print(f"모델 저장 중 오류: {e}")
 
 if __name__ == "__main__":
-    preprocessor = ModelDataPreprocessor()
-    processed_df = preprocessor.preprocess()
-    deep_fm = DeepFM()
-    deep_fm.train()
+    recommender = MusicalRecommender()
+    recommender.run()
+    # recommender.load_and_preprocess_data()
+    # test_loss, test_acc = recommender.train_model()
