@@ -17,7 +17,7 @@ utils_dir = os.path.abspath(os.path.join(current_dir, "../utils"))
 sys.path.append(utils_dir)
 
 from utils.All_Musical_Process import Musical_Process
-from utils.All_Musical_Process import Recommender
+from utils.recommend import Recommender
 import config
 
 """기본 틀"""
@@ -72,7 +72,7 @@ def run_musical_process():
         all_musical_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(all_musical_module)
     except Exception as e:
-        st.error(f"All_Musical_Process 실행 중 오류 발생: {e}")
+        st.error(f"실행 중 오류 발생: {e}")
 
 
 # 로딩 화면 표시 함수
@@ -102,13 +102,13 @@ st.markdown("""
 # 배우 데이터 로드
 @st.cache_data
 def load_actor_list():
-    file = f'{config.file_path}/actor_genre_df.json'
+    file = f'{config.file_path}/{config.add_genre_file_name}'
     if not os.path.exists(file):
         raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file}")
     
-    actor_genre_df = pd.read_json(file, lines=True)
+    add_genre_file = pd.read_json(file, lines=True)
     
-    actor_list = actor_genre_df["actor"].tolist()
+    actor_list = add_genre_file["cast"].tolist()
     return sorted(actor_list)
 
 actor_list = load_actor_list()
@@ -184,7 +184,6 @@ if st.button("초기화"):
     st.session_state["filtered_actors"] = []
 
 
-
 # 장르처리
 base_genres = {
     1: 'Historical',
@@ -224,32 +223,23 @@ if st.button("추천받기"):
                 recommender = Recommender()
                 recommender.load_data()
                 recommender.load_model()
+                recommender.load_reference_data()
+                
                 
                 genre_id = genre_choice
-                prediction, similar_musicals = recommender.run(genre_id, st.session_state["selected_actor"])
+                recommendations = recommender.recommend(genre_id, st.session_state["selected_actor"])
 
-                if similar_musicals is not None and not similar_musicals.empty:
+                if not recommendations.empty:
                     st.markdown("### 추천된 뮤지컬 목록")
-                    for idx, (_, musical) in enumerate(similar_musicals.iterrows()):
-                        col1, col2 = st.columns([1, 2]) 
-                        with col1:
-                            if pd.notna(musical["poster"]):
-                                st.image(
-                                    musical["poster"],
-                                    caption=musical["title"],
-                                    use_container_width=True
-                                )
-                        with col2:
-                            st.markdown(f"""
-                            - **[{idx+1}] 제목**: {musical['title']}
-                            - **장소**: {musical['place_x']}
-                            - **기간**: {musical['start_date_x']} ~ {musical['end_date_x']}
-                            - **출연진**: {musical['cast']}
-                            - **장르**: {musical['genre']}
-                            - **티켓 가격**: {musical['ticket_price']}원
-                            """)
-                        if idx == 2:
-                            break
+                    for idx, row in recommendations.iterrows():
+                        st.markdown(f"""
+                        - **[{idx+1}] 제목**: {row['title']}
+                        - **장소**: {row['place']}
+                        - **기간**: {row['start_date']} ~ {row['end_date']}
+                        - **출연진**: {row['cast']}
+                        - **장르**: {row['genre']}
+                        - **티켓 가격**: {row['ticket_price']}원
+                        """)
                 else:
                     st.warning("추천 결과가 없습니다.")
             except Exception as e:
