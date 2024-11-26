@@ -13,7 +13,7 @@ class Preprocessing:
     def load_data(self):
         data_list = []
         # JSON 파일 한 줄씩 읽어서 처리
-        with open('C:/SKN_3_MyProject/SKN_03_FINAL/Data/Final/add_genre_story.json', 'r', encoding='utf-8-sig') as file:
+        with open(f'{config.file_path}/{config.add_genre_file_name}', 'r', encoding='utf-8-sig') as file:
             for line in file:
                 # 한 줄의 JSON 문자열을 딕셔너리로 변환
                 data = json.loads(line.strip())

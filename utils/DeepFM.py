@@ -151,5 +151,3 @@ class MusicalRecommender:
 if __name__ == "__main__":
     recommender = MusicalRecommender()
     recommender.run()
-    # recommender.load_and_preprocess_data()
-    # test_loss, test_acc = recommender.train_model()
