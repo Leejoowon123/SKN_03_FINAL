@@ -1,6 +1,6 @@
 import streamlit as st
 from components.sidebar import add_custom_sidebar
-from model.RecommendationModel import MusicalRecommender
+from SKN_03_FINAL.model.RecommendationModel import MusicalRecommender
 import pandas as pd
 import os
 import subprocess
@@ -8,7 +8,7 @@ import subprocess
 """전처리된 파일의 존재 여부 확인 후 없는 경우만 Preprocessing.py를 실행하는 함수"""
 def check_and_run_preprocessing():
     
-    preprocessed_file_path = 'Data/Final/Combined_Musical_Data.csv'
+    preprocessed_file_path = '이따 다시쓰자 지원아..'
     
     if not os.path.exists(preprocessed_file_path):
         st.warning("데이터가 없음. 전처리 시작...")
