@@ -30,19 +30,21 @@ if __name__ == "__main__":
     add_genre_file_path = f'{config.file_path}/{config.add_genre_file_name}'
 
     process = Musical_Process() 
-    # Prompt.py 실행 조건
+     
+    """장르 추가 실행 조건"""
     if not os.path.exists(add_genre_file_path):
         process.execute_script("prompt.py")
     else:
         print('pass prompt')
         pass
 
+    """전처리 코드 실행 조건"""
     if not os.path.exists(config.df_with_negatives_path):
         process.execute_script("preprocessing.py")
     else:
         print('pass Preprocessing')
             
-    # DeepFM.py 실행 조건
+    """모델 생성 실행 조건"""
     if not os.path.exists(config.save_model_path):
         # print("DeepFM 실행")
         process.execute_script("DeepFM.py")

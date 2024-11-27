@@ -7,8 +7,11 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Embedding, Dense, Concatenate, Flatten, Add, Lambda, Dropout
 import tensorflow as tf
 from tensorflow.keras import backend as K
+from keras.layers import Layer
 import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.saving import register_keras_serializable
+from tensorflow.keras.regularizers import l2
 import pickle
 import sys
 import os
@@ -68,7 +71,8 @@ class MusicalRecommender:
             print("Error: Lengths of X and y do not match!")
         
         return X_train, X_test, y_train, y_test
-    
+
+
     def create_deepfm_model(self):
         # 모델 구조 정의
         inputs = {
@@ -76,26 +80,33 @@ class MusicalRecommender:
             'cast': Input(shape=(1,), dtype=tf.int32, name='cast'),
             'genre': Input(shape=(1,), dtype=tf.int32, name='genre')
         }
-        
+        # 임베딩 정의 (L2 정규화 추가)
         embeddings = {
-            'title': Embedding(self.vocab_sizes['title'], 8)(inputs['title']),
-            'cast': Embedding(self.vocab_sizes['cast'], 8)(inputs['cast']),
-            'genre': Embedding(self.vocab_sizes['genre'], 8)(inputs['genre']),
+            'title': Embedding(self.vocab_sizes['title'], 16, embeddings_regularizer=l2(1e-4))(inputs['title']),
+            'cast': Embedding(self.vocab_sizes['cast'], 16, embeddings_regularizer=l2(1e-4))(inputs['cast']),
+            'genre': Embedding(self.vocab_sizes['genre'], 16, embeddings_regularizer=l2(1e-4))(inputs['genre']),
         }
-        
+    
+        fm_output = FMInteraction()([embeddings['title'], embeddings['cast'], embeddings['genre']])
+
         # Flatten embeddings and concatenate with numerical data
-        concatenated = Concatenate()([Flatten()(embeddings['title']), Flatten()(embeddings['cast'])])
+        concatenated = Concatenate()(
+            [Flatten()(embeddings['title']), 
+             Flatten()(embeddings['cast']),
+             Flatten()(embeddings['genre']),
+             Flatten()(fm_output)
+        ])
         
-        # Hidden layers
-        x = Dense(128, activation='relu')(concatenated)
+        # 완전 연결 계층 (Dense 레이어 L2 정규화 추가)
+        x = Dense(128, activation='relu', kernel_regularizer=l2(1e-4))(concatenated)
         x = Dropout(0.3)(x)
-        x = Dense(64, activation='relu')(x)
+        x = Dense(64, activation='relu', kernel_regularizer=l2(1e-4))(x)
         x = Dropout(0.3)(x)
-        x = Dense(32, activation='relu')(x)
-        output = Dense(1, activation='sigmoid')(x)  # For binary classification
+        x = Dense(32, activation='relu', kernel_regularizer=l2(1e-4))(x)
+        output = Dense(1, activation='sigmoid', kernel_regularizer=l2(1e-4))(x)
 
         self.model = Model(inputs=[inputs['title'], inputs['cast'], inputs['genre']], outputs=output)
-        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        self.model.compile(optimizer='adam', loss=weighted_loss, metrics=['accuracy', 'Precision', 'Recall'])
         self.model.summary()
 
     def train_model(self):
@@ -119,7 +130,6 @@ class MusicalRecommender:
             validation_data=([X_test['title'], X_test['cast'], X_test['genre']], y_test),
             callbacks=[early_stopping]  
         )
-        
         # Plot training history
         plt.plot(history.history['accuracy'], label='accuracy')
         plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
@@ -128,24 +138,69 @@ class MusicalRecommender:
         plt.ylim([0, 1])
         plt.legend(loc='lower right')
         plt.savefig(config.picture_file_path)
-        
-        test_loss, test_acc = self.model.evaluate(
-            [X_test['title'], X_test['cast'], X_test['genre']],
-            y_test, verbose=2
+        self.retrain()
+
+    def retrain(self):
+        X_full = pd.DataFrame({
+        'title': self.data['title'],
+        'cast': self.data['cast'],
+        'genre': self.data['genre']
+        })
+        y_full = self.data['target']
+
+        self.model.fit(
+            [X_full['title'], X_full['cast'], X_full['genre']],
+            y_full,
+            batch_size=64,
+            epochs=5,  # 전체 데이터로 재학습할 에포크 수
+            verbose=1
         )
-
+        print("Retraining completed.")
+        evaluation_results = self.model.evaluate(
+            [X_full['title'],X_full[    'cast'], X_full['genre']],
+            y_full, verbose=2
+        )
+        # 레이블 인코더 저장
         self.save_model(config.save_model_path)
-        print(f"Test Accuracy: {test_acc}")
+        
+        test_loss = evaluation_results[0]  # 손실 (loss)
+        test_accuracy = evaluation_results[1]  # 정확도 (accuracy)
+        test_precision = evaluation_results[2]  # 정밀도 (Precision)
+        test_recall = evaluation_results[3]  # 재현율 (Recall)
 
-        # return test_loss, test_acc
+        print(f"Test Loss: {test_loss}")
+        print(f"Test Accuracy: {test_accuracy}")
+        print(f"Test Precision: {test_precision}")
+        print(f"Test Recall: {test_recall}")
+
 
     def save_model(self, path):
-        with open(path, 'wb') as f:
-            pickle.dump(self.model, f)
+        self.model.save(path)
 
     def run(self):
         self.load_and_preprocess_data()
         self.train_model()
+
+# Keras 직렬화 시스템에 FMInteraction 클래스를 등록
+# package 파라미터는 사용자 지정 이름(Custom)을 설정하여 직렬화 중 충돌을 방지
+# 저장된 모델을 로드할 때 FMInteraction 클래스를 올바르게 인식
+@register_keras_serializable(package="Custom")
+class FMInteraction(Layer):
+    def __init__(self, **kwargs):
+        super(FMInteraction, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        pairwise_interactions = []
+        for i in range(len(inputs)):
+            for j in range(i + 1, len(inputs)):
+                interaction = K.sum(inputs[i] * inputs[j], axis=-1, keepdims=True)
+                pairwise_interactions.append(interaction)
+        return K.sum(pairwise_interactions, axis=0)
+
+@register_keras_serializable(package="Custom")
+def weighted_loss(y_true, y_pred):
+    weight = K.cast(y_true == 1, 'float32') * 0.7 + 0.3  # 긍정 샘플에 더 높은 가중치
+    return K.mean(weight * K.binary_crossentropy(y_true, y_pred))
 
 
 if __name__ == "__main__":

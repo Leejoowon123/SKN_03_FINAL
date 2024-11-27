@@ -45,6 +45,7 @@ class Preprocessing:
                 if " 중에는" in genre:
                     genre = genre.split(" 중에는")[-1].strip() 
             return genre
+        
         self.df['genre'] = self.df['genre'].apply(extract_final_genre)
         # cast 열을 쉼표로 나누고 행으로 확장
         self.df["cast_split"] = self.df["cast"].str.split(", ")  # 쉼표로 분리
@@ -64,6 +65,7 @@ class Preprocessing:
         df_selected['cast'] = df_selected['cast'].str.replace('등', '', regex=False).str.strip()
 
         df_selected['target'] = 1
+        
         # 1. target=1인 데이터만 필터링
         positive_df = df_selected[df_selected['target'] == 1]
 
@@ -71,6 +73,9 @@ class Preprocessing:
         all_movies = df_selected[['title', 'genre']].drop_duplicates()
 
         # 3. 부정 샘플을 위한 빈 리스트 생성
+
+        positive_count = len(positive_df)
+        max_negative_samples = positive_count * 4
         negative_samples = []
 
         # 4. 각 배우에 대해 해당 배우가 등장한 영화 외의 영화들에 대해 target=0으로 샘플 생성
@@ -87,14 +92,26 @@ class Preprocessing:
             
             # negative sampling: 배우가 등장하지 않은 영화에 대해 target=0
             # `4배`만큼 랜덤 샘플링
+            # non_cast_movies_sampled = non_cast_movies.sample(
+            #     n=len(movies_played_by_cast) * 4, 
+            #     random_state=42, 
+            #     replace=True)]
+
             non_cast_movies_sampled = non_cast_movies.sample(
-                n=len(movies_played_by_cast) * 4, 
-                random_state=42, 
-                replace=True)
-            
+                n=min(len(non_cast_movies), max_negative_samples),
+                random_state=42,
+                replace=False
+            )
+
             # 샘플링된 영화와 그에 해당하는 배우 및 target=0을 negative_samples에 추가
             for _, movie_row in non_cast_movies_sampled.iterrows():
-                negative_samples.append({'cast': cast, 'title': movie_row['title'], 'genre': movie_row['genre'], 'target': 0})
+                if len(negative_samples) >= max_negative_samples:
+                    break  # 최대 개수를 초과하면 중단
+                negative_samples.append({
+                    'cast': cast, 
+                    'title': movie_row['title'], 
+                    'genre': movie_row['genre'], 'target': 0
+                })
 
         # 5. negative_samples 리스트로부터 새로운 DataFrame 생성
         negative_df = pd.DataFrame(negative_samples)

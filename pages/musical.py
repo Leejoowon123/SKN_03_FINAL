@@ -1,5 +1,5 @@
 import streamlit as st
-from components.sidebar import add_custom_sidebar
+from components.sidebar import add_custom_sidebar, button_style, render_button
 import pandas as pd
 import itertools
 import importlib.util
@@ -23,17 +23,11 @@ import config
 """기본 틀"""
 # 사이드바 추가
 add_custom_sidebar()
+button_style()
 
 # CSS 스타일
 st.markdown("""
 <style>
-.stButton > button {
-    background-color: transparent;
-    border: none;
-    color: black;
-    font-size: 24px;
-}
-
 .sidebar {
     background-color: #f0f0f0;
     padding: 20px;
@@ -177,7 +171,7 @@ if st.session_state["selected_actor"]:
     st.markdown(f"**선택된 배우:** {st.session_state['selected_actor']}")
 
 # 초기화 버튼
-if st.button("초기화"):
+if st.button("초기화", key="reset_button"):
     st.session_state["selected_actor"] = None
     st.session_state["favorite_actor"] = ""
     st.session_state["filtered_actors"] = []
@@ -199,11 +193,10 @@ st.markdown(f"**선택된 장르:** {genre_choice}")
 
 
 # 추천 버튼
-if st.button("추천받기"):
+if st.button("추천받기", key="run_button"):
     if not st.session_state["selected_actor"]:
         st.error("배우를 선택해주세요.")
     else:
-        st.markdown("### 추천 결과")
         with st.spinner("추천 결과를 생성하는 중입니다... 잠시만 기다려주세요."):
             try:
                 recommender = Recommender()
