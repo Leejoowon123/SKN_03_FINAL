@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.saving import register_keras_serializable
 from tensorflow.keras.regularizers import l2
-import pickle
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
