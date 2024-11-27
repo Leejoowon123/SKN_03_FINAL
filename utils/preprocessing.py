@@ -23,6 +23,29 @@ class Preprocessing:
         self.df = pd.DataFrame(data_list)
 
     def preprocessing_data(self):
+
+        # 장르 처리: '중' 키워드 포함 시 마지막 장르 선택
+        def extract_final_genre(genre):
+            if genre == '드라마/감동, 스릴러/액션':
+                    return "드라마/감동, 액션/스릴러"
+            if (
+                genre == '코미디/유머, 액션/스릴러, 판타지/어드벤처' or
+                genre == '코미디/유머, 액션/스릴러, 음악중심/주크박스' or
+                genre == '액션/스릴러, 판타지/어드벤처, 음악중심/주크박스'
+            ):
+                return '액션/스릴러'
+            if genre == '드라마/감동, 판타지/어드벤처, 음악중심/주크박스':
+                return '드라마/감동, 판타지/어드벤처'
+            if genre == '드라마/감동, 스릴러/액션':
+                    return '드라마/감동, 판타지/어드벤처'   
+            if "중" in genre:
+                # ' 중 ' 키워드(앞뒤 공백 포함)가 포함된 경우 마지막 단어 선택
+                if " 중 " in genre:
+                    genre = genre.split(" 중 ")[-1].strip()
+                if " 중에는" in genre:
+                    genre = genre.split(" 중에는")[-1].strip() 
+            return genre
+        self.df['genre'] = self.df['genre'].apply(extract_final_genre)
         # cast 열을 쉼표로 나누고 행으로 확장
         self.df["cast_split"] = self.df["cast"].str.split(", ")  # 쉼표로 분리
         df_expanded = self.df.explode("cast_split").reset_index(drop=True)  # 행으로 확장
@@ -64,7 +87,10 @@ class Preprocessing:
             
             # negative sampling: 배우가 등장하지 않은 영화에 대해 target=0
             # `4배`만큼 랜덤 샘플링
-            non_cast_movies_sampled = non_cast_movies.sample(n=len(movies_played_by_cast) * 4, random_state=42, replace=True)
+            non_cast_movies_sampled = non_cast_movies.sample(
+                n=len(movies_played_by_cast) * 4, 
+                random_state=42, 
+                replace=True)
             
             # 샘플링된 영화와 그에 해당하는 배우 및 target=0을 negative_samples에 추가
             for _, movie_row in non_cast_movies_sampled.iterrows():

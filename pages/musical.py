@@ -79,7 +79,6 @@ def run_musical_process():
 def show_loading_screen():
     # 빈 컨테이너 생성
     placeholder = st.empty()
-    
     # 스피너 표시
     with placeholder.container():
         with st.spinner("로딩 중... 잠시만 기다려주세요(처음에는 로딩이 길어질 수 있습니다.)"):
@@ -102,7 +101,7 @@ st.markdown("""
 # 배우 데이터 로드
 @st.cache_data
 def load_actor_list():
-    file = f'{config.file_path}/{config.add_genre_file_name}'
+    file = config.df_with_negatives_path
     if not os.path.exists(file):
         raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file}")
     
@@ -140,12 +139,12 @@ if "filtered_actors" not in st.session_state:
 favorite_actor = st.text_input(
     "좋아하는 배우를 입력하세요",
     placeholder="배우 이름 또는 초성을 입력하세요",
-    value=st.session_state["favorite_actor"],
+    value=st.session_state.get("favorite_actor", ""),
     key="favorite_actor_input"
 )
 
 # 검색 처리
-if favorite_actor != st.session_state["favorite_actor"]:
+if favorite_actor != st.session_state.get("favorite_actor", ""):
     st.session_state["favorite_actor"] = favorite_actor
 
     search_query = st.session_state["favorite_actor"]
@@ -153,25 +152,25 @@ if favorite_actor != st.session_state["favorite_actor"]:
     if search_query:
         # 단어와 초성 구분
         if all('가' <= char <= '힣' for char in search_query):  # 완성된 단어 입력 시
-            st.session_state["filtered_actors"] = [
+            st.session_state["filtered_actors"] = sorted({
                 actor for actor in actor_list if actor[:len(search_query)] == search_query
-            ]
+            })
         else:  # 초성 입력 시
             user_chosung = get_chosung(search_query)
-            st.session_state["filtered_actors"] = [
+            st.session_state["filtered_actors"] = sorted({
                 actor for actor in actor_list
                 if user_chosung == get_chosung(actor[:len(search_query)])  # 초성 매칭
-            ]
+            })
 
-# 검색 결과 동적 표시
-if st.session_state["filtered_actors"]:
-    st.markdown("### 검색 결과:")
-    for actor in st.session_state["filtered_actors"]:
-        if st.button(actor, key=f"actor_{actor}"):
-            st.session_state["selected_actor"] = actor
-            st.session_state["favorite_actor"] = actor  # 입력창 업데이트
-            st.session_state["filtered_actors"] = []  # 검색 결과 초기화
-            break
+# 배우 목록 드롭다운으로 표시
+if st.session_state.get("filtered_actors", []):
+    unique_filtered_actors = sorted(set(st.session_state["filtered_actors"]))
+    selected_actor = st.selectbox(
+        "검색된 배우 목록:",
+        options=unique_filtered_actors,
+        key="actor_dropdown"
+    )
+    st.session_state["selected_actor"] = selected_actor
 
 # 선택된 배우 출력
 if st.session_state["selected_actor"]:
@@ -185,31 +184,18 @@ if st.button("초기화"):
 
 
 # 장르처리
-base_genres = {
-    1: 'Historical',
-    2: 'Romance',
-    3: 'Drama',
-    4: 'Fantasy',
-    5: 'Comedy'
-}
-
-# 장르 조합 생성
-def generate_genre_combinations(base_genres):
-    combinations = list(itertools.combinations(base_genres.items(), 2))
-    combined_genres = {
-        idx + 6: f"{genre1[1]} & {genre2[1]}"
-        for idx, (genre1, genre2) in enumerate(combinations)
-    }
-    return combined_genres
-
-genre_mapping = {**base_genres, **generate_genre_combinations(base_genres)}
+# 유니크한 장르 값 정의
+unique_genres = config.unique_genres
 
 # 장르 선택
 genre_choice = st.selectbox(
     "좋아하는 장르를 선택하세요",
-    options=list(genre_mapping.keys()),
-    format_func=lambda x: f"{x}. {genre_mapping[x]}"
+    options=unique_genres,
+    format_func=lambda x: x
 )
+
+# 선택된 장르 출력
+st.markdown(f"**선택된 장르:** {genre_choice}")
 
 
 # 추천 버튼
@@ -227,19 +213,28 @@ if st.button("추천받기"):
                 
                 
                 genre_id = genre_choice
-                recommendations = recommender.recommend(genre_id, st.session_state["selected_actor"])
+                recommendations = recommender.recommend(st.session_state["selected_actor"], genre_id)
 
                 if not recommendations.empty:
                     st.markdown("### 추천된 뮤지컬 목록")
-                    for idx, row in recommendations.iterrows():
-                        st.markdown(f"""
-                        - **[{idx+1}] 제목**: {row['title']}
-                        - **장소**: {row['place']}
-                        - **기간**: {row['start_date']} ~ {row['end_date']}
-                        - **출연진**: {row['cast']}
-                        - **장르**: {row['genre']}
-                        - **티켓 가격**: {row['ticket_price']}원
-                        """)
+                    for _, row in recommendations.iterrows():
+                        # 컬럼 레이아웃 생성
+                        col1, col2 = st.columns([1, 3])
+
+                        # 왼쪽에 포스터 이미지 출력
+                        with col1:
+                            st.image(row['poster'], width=150)
+
+                        # 오른쪽에 뮤지컬 정보 출력
+                        with col2:
+                            st.markdown(f"""
+                            - **제목**: {row['title']}
+                            - **장소**: {row['place']}
+                            - **기간**: {row['start_date']} ~ {row['end_date']}
+                            - **출연진**: {row['cast']}
+                            - **장르**: {row['genre']}
+                            - **티켓 가격**: {row['ticket_price']}
+                            """)
                 else:
                     st.warning("추천 결과가 없습니다.")
             except Exception as e:
