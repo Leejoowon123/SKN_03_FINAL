@@ -27,18 +27,25 @@ class Musical_Process:
             raise
 
 if __name__ == "__main__":
+    processed_data_file_path = f'{config.file_path}/{config.processed_data}'
     add_genre_file_path = f'{config.file_path}/{config.add_genre_file_name}'
 
     process = Musical_Process() 
+
+    """처음 전처리 코드 per+raw.json -> processed_data.json"""
+    if not os.path.exists(processed_data_file_path):
+        process.execute_script("first_preprocessing.py")
+    else:
+        print('pass first_preprocessing')
      
-    """장르 추가 실행 조건"""
+    """장르 추가 실행 조건 processed_data.json -> add_genre_story.json"""
     if not os.path.exists(add_genre_file_path):
         process.execute_script("prompt.py")
     else:
         print('pass prompt')
         pass
 
-    """전처리 코드 실행 조건"""
+    """전처리 코드 실행 조건 add_genre_story.json -> df_with_negatives.json"""
     if not os.path.exists(config.df_with_negatives_path):
         process.execute_script("preprocessing.py")
     else:

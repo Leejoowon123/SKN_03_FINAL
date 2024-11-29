@@ -223,7 +223,6 @@ if st.button("추천받기", key="run_button"):
                             st.markdown(f"""
                             - **제목**: {row['title']}
                             - **장소**: {row['place']}
-                            - **기간**: {row['start_date']} ~ {row['end_date']}
                             - **출연진**: {row['cast']}
                             - **장르**: {row['genre']}
                             - **티켓 가격**: {row['ticket_price']}

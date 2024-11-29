@@ -48,12 +48,17 @@ class MusicalRecommender:
         for feature in categorical_features:
             categorical_data[feature] = self.data[feature].values  # 각 범주형 데이터를 딕셔너리에 저장
         
-        
+        # 수치형 데이터를 포함
+        numerical_features = ['percentage']
+        numerical_data = self.data[numerical_features].values
+
+
         # X 구성: 카테고리형 데이터와 수치형 데이터를 모두 합친 DataFrame 생성
         X = pd.DataFrame({
             'title': categorical_data['title'],
             'cast': categorical_data['cast'],
-            'genre': categorical_data['genre']  # 첫 번째 수치형 변수
+            'genre': categorical_data['genre'],
+            'percentage': numerical_data[:, 0]
         })
         
         # 타겟 데이터
@@ -77,22 +82,23 @@ class MusicalRecommender:
         inputs = {
             'title': Input(shape=(1,), dtype=tf.int32, name='title'),
             'cast': Input(shape=(1,), dtype=tf.int32, name='cast'),
-            'genre': Input(shape=(1,), dtype=tf.int32, name='genre')
+            'genre': Input(shape=(1,), dtype=tf.int32, name='genre'),
+            'percentage': Input(shape=(1,), dtype=tf.float32, name='percentage')
         }
         # 임베딩 정의 (L2 정규화 추가)
         embeddings = {
-            'title': Embedding(self.vocab_sizes['title'], 16, embeddings_regularizer=l2(1e-4))(inputs['title']),
-            'cast': Embedding(self.vocab_sizes['cast'], 16, embeddings_regularizer=l2(1e-4))(inputs['cast']),
-            'genre': Embedding(self.vocab_sizes['genre'], 16, embeddings_regularizer=l2(1e-4))(inputs['genre']),
+            'title': Embedding(self.vocab_sizes['title'], 16, embeddings_regularizer=l2(1e-4), name='embedding_title')(inputs['title']),
+            'cast': Embedding(self.vocab_sizes['cast'], 16, embeddings_regularizer=l2(1e-4), name='embedding_cast')(inputs['cast']),
+            'genre': Embedding(self.vocab_sizes['genre'], 16, embeddings_regularizer=l2(1e-4), name='embedding_genre')(inputs['genre']),
         }
     
         fm_output = FMInteraction()([embeddings['title'], embeddings['cast'], embeddings['genre']])
-
         # Flatten embeddings and concatenate with numerical data
         concatenated = Concatenate()(
             [Flatten()(embeddings['title']), 
              Flatten()(embeddings['cast']),
              Flatten()(embeddings['genre']),
+             inputs['percentage'],
              Flatten()(fm_output)
         ])
         
@@ -104,7 +110,7 @@ class MusicalRecommender:
         x = Dense(32, activation='relu', kernel_regularizer=l2(1e-4))(x)
         output = Dense(1, activation='sigmoid', kernel_regularizer=l2(1e-4))(x)
 
-        self.model = Model(inputs=[inputs['title'], inputs['cast'], inputs['genre']], outputs=output)
+        self.model = Model(inputs=[inputs['title'], inputs['cast'], inputs['genre'], inputs['percentage']], outputs=output)
         self.model.compile(optimizer='adam', loss=weighted_loss, metrics=['accuracy', 'Precision', 'Recall'])
         self.model.summary()
 
@@ -121,12 +127,13 @@ class MusicalRecommender:
         
         # Train the model and display progress
         history = self.model.fit(
-            [X_train['title'], X_train['cast'], X_train['genre']],
+            [X_train['title'], X_train['cast'], X_train['genre'], X_train['percentage']],
             y_train,
             batch_size=64,
             epochs=20,
             verbose=1,
-            validation_data=([X_test['title'], X_test['cast'], X_test['genre']], y_test),
+            validation_data=([X_test['title'], X_test['cast'], X_test['genre'], X_test['percentage']],
+                              y_test),
             callbacks=[early_stopping]  
         )
         # Plot training history
@@ -143,12 +150,13 @@ class MusicalRecommender:
         X_full = pd.DataFrame({
         'title': self.data['title'],
         'cast': self.data['cast'],
-        'genre': self.data['genre']
+        'genre': self.data['genre'],
+        'percentage': self.data['percentage']
         })
         y_full = self.data['target']
 
         self.model.fit(
-            [X_full['title'], X_full['cast'], X_full['genre']],
+            [X_full['title'], X_full['cast'], X_full['genre'], X_full['percentage']],
             y_full,
             batch_size=64,
             epochs=5,  # 전체 데이터로 재학습할 에포크 수
@@ -156,7 +164,7 @@ class MusicalRecommender:
         )
         print("Retraining completed.")
         evaluation_results = self.model.evaluate(
-            [X_full['title'],X_full[    'cast'], X_full['genre']],
+            [X_full['title'],X_full['cast'], X_full['genre'], X_full['percentage']],
             y_full, verbose=2
         )
         # 레이블 인코더 저장
@@ -200,8 +208,7 @@ class FMInteraction(Layer):
 def weighted_loss(y_true, y_pred):
     weight = K.cast(y_true == 1, 'float32') * 0.7 + 0.3  # 긍정 샘플에 더 높은 가중치
     return K.mean(weight * K.binary_crossentropy(y_true, y_pred))
-
-
+   
 if __name__ == "__main__":
     recommender = MusicalRecommender()
     recommender.run()

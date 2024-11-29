@@ -1,5 +1,6 @@
 import json
 import pandas as pd
+import numpy as np
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -26,24 +27,8 @@ class Preprocessing:
 
         # 장르 처리: '중' 키워드 포함 시 마지막 장르 선택
         def extract_final_genre(genre):
-            if genre == '드라마/감동, 스릴러/액션':
-                    return "드라마/감동, 액션/스릴러"
-            if (
-                genre == '코미디/유머, 액션/스릴러, 판타지/어드벤처' or
-                genre == '코미디/유머, 액션/스릴러, 음악중심/주크박스' or
-                genre == '액션/스릴러, 판타지/어드벤처, 음악중심/주크박스'
-            ):
-                return '액션/스릴러'
-            if genre == '드라마/감동, 판타지/어드벤처, 음악중심/주크박스':
-                return '드라마/감동, 판타지/어드벤처'
-            if genre == '드라마/감동, 스릴러/액션':
-                    return '드라마/감동, 판타지/어드벤처'   
-            if "중" in genre:
-                # ' 중 ' 키워드(앞뒤 공백 포함)가 포함된 경우 마지막 단어 선택
-                if " 중 " in genre:
-                    genre = genre.split(" 중 ")[-1].strip()
-                if " 중에는" in genre:
-                    genre = genre.split(" 중에는")[-1].strip() 
+            if genre == '창작':
+                    return "지역|창작"
             return genre
         
         self.df['genre'] = self.df['genre'].apply(extract_final_genre)
@@ -56,10 +41,15 @@ class Preprocessing:
         df_expanded = df_expanded.drop(columns=["cast_split"])
 
         # 필요한 열만 선택
-        df_selected = df_expanded[["cast", "title", "genre"]]
+        df_selected = df_expanded[["cast", "title", "genre", "percentage"]]
 
+        # # percentage 컬럼 정규화 (0과 1 사이 값으로 스케일링)
+        min_percentage = df_selected['percentage'].min()
+        max_percentage = df_selected['percentage'].max()
+        df_selected['percentage'] = (df_selected['percentage'] - min_percentage) / (max_percentage - min_percentage)
+        df_selected['percentage'] = df_selected['percentage'].round(4)
         # 대괄호 안의 내용 제거
-        df_selected['title'] = df_selected['title'].str.replace(r'\s*\[.*?\]', '', regex=True)
+        # df_selected['title'] = df_selected['title'].str.replace(r'\s*\[.*?\]', '', regex=True)
 
         # '등'을 제거하고 공백을 제거
         df_selected['cast'] = df_selected['cast'].str.replace('등', '', regex=False).str.strip()
@@ -70,8 +60,8 @@ class Preprocessing:
         positive_df = df_selected[df_selected['target'] == 1]
 
         # 2. 전체 영화 목록 추출 (중복 제거)
-        all_movies = df_selected[['title', 'genre']].drop_duplicates()
-
+        # all_movies = df_selected[['title', 'genre']].drop_duplicates()
+        all_movies = df_selected.groupby(['title', 'genre'], as_index=False).first()
         # 3. 부정 샘플을 위한 빈 리스트 생성
 
         positive_count = len(positive_df)
@@ -110,7 +100,9 @@ class Preprocessing:
                 negative_samples.append({
                     'cast': cast, 
                     'title': movie_row['title'], 
-                    'genre': movie_row['genre'], 'target': 0
+                    'genre': movie_row['genre'], 
+                    'percentage': movie_row['percentage'] if not pd.isna(movie_row['percentage']) else 0,
+                    'target': 0
                 })
 
         # 5. negative_samples 리스트로부터 새로운 DataFrame 생성
