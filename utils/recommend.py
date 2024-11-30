@@ -51,7 +51,11 @@ class Recommender:
         genre_encoded = self.label_encoders['genre'][genre]
         
         # 데이터셋 전체를 사용하여 예측
-        X = self.data[['title', 'cast', 'genre', 'percentage']].copy()
+        X = self.data[['title', 
+                    'cast', 
+                    'genre', 
+                    # 'percentage'
+                    ]].copy()
         title_encoder = self.label_encoders['title']
         cast_encoder = {v: k for k, v in self.label_encoders['cast'].items()}
         genre_encoder = {v: k for k, v in self.label_encoders['genre'].items()}
@@ -64,9 +68,9 @@ class Recommender:
         X = X.drop_duplicates(subset=['title', 'cast', 'genre'])
         
         predictions = self.model.predict([X['title'].values, 
-                                          X['cast'].values, 
-                                          X['genre'].values,
-                                          X['percentage'].values,
+                                        X['cast'].values, 
+                                        X['genre'].values,
+                                        # X['percentage'].values,
                                         ])
         X['predicted_score'] = predictions
 
@@ -154,5 +158,5 @@ if __name__ == "__main__":
 
     # cast = "옥주현"
     # genre = "역사"
-    recommendations = recommender.recommend(cast, genre)
+    # recommendations = recommender.recommend(cast, genre)
     # print(recommendations)
