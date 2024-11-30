@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 import numpy as np
+import re
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -23,6 +24,39 @@ class Preprocessing:
         # 리스트를 DataFrame으로 변환
         self.df = pd.DataFrame(data_list)
 
+
+    def extract_ticket_price(self, ticket_price):
+        """ticket_price 컬럼 처리 로직"""
+        # 1. 전석 무료 처리
+        if "전석 무료" in ticket_price:
+            return 0
+        # 2. 전석 + 단일 가격 처리
+        elif "전석" in ticket_price:
+            match = re.search(r'(\d+),?\d*원', ticket_price)
+            if match:
+                return int(match.group(1).replace(",", ""))
+        # 3. 여러 좌석 가격 처리
+        else:
+            prices = re.findall(r'석\s*(\d+),?\d*원', ticket_price)
+            if prices:
+                prices = [int(price.replace(",", "")) for price in prices]
+                return sum(prices) / len(prices)  # 평균 계산
+        return None  # 기본값 (가격이 없는 경우)
+
+    def normalize_ticket_price(self, prices):
+        """로그 변환 및 0~1 정규화"""
+        # 로그 변환
+        log_prices = np.log1p(prices)  # log(1 + price)
+
+        # 기존 로그 값의 최소값과 최대값
+        min_log_price = log_prices.min()
+        max_log_price = log_prices.max()
+
+        # 0.01 ~ 1로 정규화
+        normalized_prices = 0.01 + (log_prices - min_log_price) * (1 - 0.01) / (max_log_price - min_log_price)
+        return normalized_prices
+
+
     def preprocessing_data(self):
 
         # 장르 처리: '중' 키워드 포함 시 마지막 장르 선택
@@ -41,7 +75,12 @@ class Preprocessing:
         df_expanded = df_expanded.drop(columns=["cast_split"])
 
         # 필요한 열만 선택
-        df_selected = df_expanded[["cast", "title", "genre", "percentage"]]
+        df_selected = df_expanded[["cast", 
+                                   "title", 
+                                   "genre", 
+                                   "percentage", 
+                                   "ticket_price"
+                                    ]]
 
         # # percentage 컬럼 정규화 (0과 1 사이 값으로 스케일링)
         min_percentage = df_selected['percentage'].min()
@@ -62,12 +101,33 @@ class Preprocessing:
         # 2. 전체 영화 목록 추출 (중복 제거)
         # all_movies = df_selected[['title', 'genre']].drop_duplicates()
         all_movies = df_selected.groupby(['title', 'genre'], as_index=False).first()
-        # 3. 부정 샘플을 위한 빈 리스트 생성
+        
+        # 티켓 price
+        # ticket_price 처리 및 컬럼 추가
+        df_selected['processed_ticket_price'] = df_selected['ticket_price'].apply(self.extract_ticket_price)
 
+        # 로그 변환 및 정규화
+        df_selected['normalized_ticket_price'] = self.normalize_ticket_price(df_selected['processed_ticket_price'].fillna(0))
+
+        # 'ticket_price' 컬럼에 normalized 값을 덮어쓰기
+        df_selected['ticket_price'] = df_selected['normalized_ticket_price'].round(4)
+
+        # 중간 컬럼 제거
+        df_selected = df_selected.drop(columns=['normalized_ticket_price', 'processed_ticket_price'])
+        
+        
+        df_selected['target'] = 1
+        positive_df = df_selected[df_selected['target'] == 1]
+
+        # 전체 영화 목록 추출 (중복 제거)
+        # all_movies = df_selected[['title', 'genre']].drop_duplicates()
+        all_movies = df_selected.groupby(['title', 'genre'], as_index=False).first()
+        
+        # 3. 부정 샘플을 위한 빈 리스트 생성
         positive_count = len(positive_df)
         max_negative_samples = positive_count * 4
         negative_samples = []
-
+        # 3. 부정 샘플을 위한 빈 리스트 생성
         # 4. 각 배우에 대해 해당 배우가 등장한 영화 외의 영화들에 대해 target=0으로 샘플 생성
         for _, row in positive_df.iterrows():
             cast = row['cast']
@@ -105,12 +165,14 @@ class Preprocessing:
                     'target': 0
                 })
 
-        # 5. negative_samples 리스트로부터 새로운 DataFrame 생성
+
+        # Negative samples DataFrame 생성
         negative_df = pd.DataFrame(negative_samples)
 
-        # 6. 기존 DataFrame과 negative samples DataFrame을 합침
+        # Positive와 Negative 데이터 결합
         df_with_negatives = pd.concat([df_selected, negative_df], ignore_index=True)
 
+        # 결과 저장
         df_with_negatives.to_json(config.df_with_negatives_path, orient='records', lines=True, force_ascii=False)
 
     def run(self):

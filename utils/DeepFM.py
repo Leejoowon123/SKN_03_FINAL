@@ -32,7 +32,10 @@ class MusicalRecommender:
         self.data = pd.read_json(config.df_with_negatives_path, lines=True)  # Update the path to a relative one if necessary
         self.original_data = self.data.copy()
         
-        categorical_features = ['title', 'cast', 'genre']
+        categorical_features = ['title', 
+                                'cast', 
+                                'genre'
+                                ]
         
         # 범주형 변수 레이블 인코딩
         for feature in categorical_features:
@@ -42,14 +45,18 @@ class MusicalRecommender:
 
     def prepare_training_data(self):
         # 범주형 데이터와 수치형 데이터를 처리
-        categorical_features = ['title', 'cast', 'genre']
+        categorical_features = ['title', 
+                                'cast', 
+                                'genre'
+                                ]
         categorical_data = {}
         
         for feature in categorical_features:
             categorical_data[feature] = self.data[feature].values  # 각 범주형 데이터를 딕셔너리에 저장
         
         # 수치형 데이터를 포함
-        numerical_features = ['percentage']
+        numerical_features = ['percentage'
+                              ]
         numerical_data = self.data[numerical_features].values
 
 
@@ -92,7 +99,10 @@ class MusicalRecommender:
             'genre': Embedding(self.vocab_sizes['genre'], 16, embeddings_regularizer=l2(1e-4), name='embedding_genre')(inputs['genre']),
         }
     
-        fm_output = FMInteraction()([embeddings['title'], embeddings['cast'], embeddings['genre']])
+        fm_output = FMInteraction()([embeddings['title'], 
+                                     embeddings['cast'], 
+                                     embeddings['genre']
+                                    ])
         # Flatten embeddings and concatenate with numerical data
         concatenated = Concatenate()(
             [Flatten()(embeddings['title']), 
@@ -110,7 +120,11 @@ class MusicalRecommender:
         x = Dense(32, activation='relu', kernel_regularizer=l2(1e-4))(x)
         output = Dense(1, activation='sigmoid', kernel_regularizer=l2(1e-4))(x)
 
-        self.model = Model(inputs=[inputs['title'], inputs['cast'], inputs['genre'], inputs['percentage']], outputs=output)
+        self.model = Model(inputs=[inputs['title'], 
+                                   inputs['cast'], 
+                                   inputs['genre'], 
+                                   inputs['percentage']], 
+                                   outputs=output)
         self.model.compile(optimizer='adam', loss=weighted_loss, metrics=['accuracy', 'Precision', 'Recall'])
         self.model.summary()
 
@@ -127,12 +141,20 @@ class MusicalRecommender:
         
         # Train the model and display progress
         history = self.model.fit(
-            [X_train['title'], X_train['cast'], X_train['genre'], X_train['percentage']],
+            [X_train['title'], 
+             X_train['cast'], 
+             X_train['genre'], 
+             X_train['percentage'
+            ]],
             y_train,
             batch_size=64,
             epochs=20,
             verbose=1,
-            validation_data=([X_test['title'], X_test['cast'], X_test['genre'], X_test['percentage']],
+            validation_data=([X_test['title'], 
+                              X_test['cast'], 
+                              X_test['genre'], 
+                              X_test['percentage'
+                            ]],
                               y_test),
             callbacks=[early_stopping]  
         )
@@ -156,7 +178,11 @@ class MusicalRecommender:
         y_full = self.data['target']
 
         self.model.fit(
-            [X_full['title'], X_full['cast'], X_full['genre'], X_full['percentage']],
+            [X_full['title'], 
+             X_full['cast'], 
+             X_full['genre'], 
+             X_full['percentage'
+            ]],
             y_full,
             batch_size=64,
             epochs=5,  # 전체 데이터로 재학습할 에포크 수
@@ -164,7 +190,11 @@ class MusicalRecommender:
         )
         print("Retraining completed.")
         evaluation_results = self.model.evaluate(
-            [X_full['title'],X_full['cast'], X_full['genre'], X_full['percentage']],
+            [X_full['title'],
+             X_full['cast'], 
+             X_full['genre'], 
+             X_full['percentage'
+            ]],
             y_full, verbose=2
         )
         # 레이블 인코더 저장
