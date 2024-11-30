@@ -89,7 +89,7 @@ class Preprocessing:
                                 "genre", 
                                 "percentage", 
                                 "ticket_price"
-                                    ]]
+                                ]]
 
         # 대괄호 안의 내용 제거
         # df_selected['title'] = df_selected['title'].str.replace(r'\s*\[.*?\]', '', regex=True)

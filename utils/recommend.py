@@ -54,7 +54,8 @@ class Recommender:
         X = self.data[['title', 
                     'cast', 
                     'genre', 
-                    # 'percentage'
+                    # 'percentage',
+                    # 'ticket_price'
                     ]].copy()
         title_encoder = self.label_encoders['title']
         cast_encoder = {v: k for k, v in self.label_encoders['cast'].items()}
@@ -71,6 +72,7 @@ class Recommender:
                                         X['cast'].values, 
                                         X['genre'].values,
                                         # X['percentage'].values,
+                                        # X['ticket_price'].values
                                         ])
         X['predicted_score'] = predictions
 
