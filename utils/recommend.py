@@ -5,9 +5,15 @@ from DeepFM import weighted_loss, FMInteraction
 from tensorflow.keras.models import load_model
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 현재 디렉토리 경로
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+# main.py 경로
+main_dir = os.path.abspath(os.path.join(current_dir, ".."))
+if main_dir not in sys.path:
+    sys.path.append(main_dir)
 import config
-
 
 class Recommender:
     def __init__(self):
