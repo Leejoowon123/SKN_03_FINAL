@@ -103,17 +103,17 @@ class MusicalRecommender:
         }
     
         fm_output = FMInteraction()([embeddings['title'], 
-                                     embeddings['cast'], 
-                                     embeddings['genre']
+                                    embeddings['cast'], 
+                                    embeddings['genre']
                                     ])
         # Flatten embeddings and concatenate with numerical data
         concatenated = Concatenate()(
             [Flatten()(embeddings['title']), 
-             Flatten()(embeddings['cast']),
-             Flatten()(embeddings['genre']),
+            Flatten()(embeddings['cast']),
+            Flatten()(embeddings['genre']),
             #  inputs['percentage'],
             #  inputs['ticket_price'],
-             Flatten()(fm_output)
+            Flatten()(fm_output)
         ])
         
         # 완전 연결 계층 (Dense 레이어 L2 정규화 추가)
@@ -125,12 +125,12 @@ class MusicalRecommender:
         output = Dense(1, activation='sigmoid', kernel_regularizer=l2(1e-4))(x)
 
         self.model = Model(inputs=[inputs['title'], 
-                                   inputs['cast'], 
-                                   inputs['genre'], 
+                                inputs['cast'], 
+                                inputs['genre'], 
                                 #    inputs['percentage'],
                                 #    inputs['ticket_price']
-                                   ], 
-                                   outputs=output)
+                                ], 
+                                outputs=output)
         self.model.compile(optimizer='adam', loss=weighted_loss, metrics=['accuracy', 'Precision', 'Recall'])
         self.model.summary()
 
@@ -250,7 +250,7 @@ class FMInteraction(Layer):
 def weighted_loss(y_true, y_pred):
     weight = K.cast(y_true == 1, 'float32') * 1.5 + 0.5  # 긍정 샘플에 더 높은 가중치
     return K.mean(weight * K.binary_crossentropy(y_true, y_pred))
-   
+
 if __name__ == "__main__":
     recommender = MusicalRecommender()
     recommender.run()

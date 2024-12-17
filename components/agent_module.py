@@ -68,8 +68,8 @@ def run_agent(data):
                 "genre": parsed_response.get("genre", None),
             }
         else:
-            print(f"[DEBUG] Unexpected agent outcome type: {type(agent_outcome)}")
+            # print(f"[DEBUG] Unexpected agent outcome type: {type(agent_outcome)}")
             return {"actor": None, "genre": None, "error": "Unexpected response type"}
     except Exception as e:
-        print(f"[DEBUG] Error in run_agent: {e}")
+        # print(f"[DEBUG] Error in run_agent: {e}")
         return {"actor": None, "genre": None, "error": str(e)}
