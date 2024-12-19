@@ -75,7 +75,9 @@ class Recommender:
         # 중복 제거
         X = X.drop_duplicates(subset=['title', 'cast', 'genre'])
         
-        predictions = self.model.predict([X['title'].values, 
+        predictions = self.model.predict(
+                                        [
+                                        X['title'].values, 
                                         X['cast'].values, 
                                         X['genre'].values,
                                         # X['percentage'].values,
@@ -105,7 +107,7 @@ class Recommender:
         top_titles = top_titles.drop_duplicates(subset=['clean_title'])
         
         matched_recommendations = self.reference_data[self.reference_data['title'].isin(top_titles['clean_title'])]
-        matched_recommendations['clean_title'] = matched_recommendations['title'].str.replace(r'\[.*?\]', '', regex=True).str.strip()
+        matched_recommendations.loc[:, 'clean_title'] = matched_recommendations['title'].str.replace(r'\[.*?\]', '', regex=True).str.strip()
         matched_recommendations = matched_recommendations.drop_duplicates(subset=['clean_title'])
 
         # 최종 데이터 결합
